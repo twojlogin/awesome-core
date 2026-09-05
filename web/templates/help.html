@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Pomoc — Awesome Tools{% endblock %}
+{% block content %}
+<h1>Pomoc</h1>
+
+<h2>Spis tresci</h2>
+<ul style="line-height:2;">
+    <li><a href="#search">Szukanie narzedzi</a></li>
+    <li><a href="#install">Instalacja / deinstalacja</a></li>
+    <li><a href="#collections">Kolekcje</a></li>
+    <li><a href="#cli">Komendy CLI (terminal)</a></li>
+    <li><a href="#web">Trasy Web UI (przegladarka)</a></li>
+    <li><a href="#data">Pobieranie danych</a></li>
+    <li><a href="#faq">FAQ</a></li>
+</ul>
+
+<!-- ==================== SZUKANIE ==================== -->
+<h2 id="search">Szukanie narzedzi</h2>
+
+<h3>Web (przegladarka)</h3>
+<p>Otworz <a href="/search">/search</a> i wpisz czego szukasz.</p>
+<p>Filtry:</p>
+<ul>
+    <li><b>q</b> — fraza do wyszukania (np. vpn, osint, docker)</li>
+    <li><b>min_stars</b> — minimalna liczba gwiazdek (0 = wszystkie)</li>
+    <li><b>alive</b> — 1 = tylko dzialajace linki, 0 = wszystkie</li>
+</ul>
+<p>Przyklad: <a href="/search?q=vpn&min_stars=100&alive=1">/search?q=vpn&min_stars=100&alive=1</a></p>
+
+<h3>CLI (terminal)</h3>
+<pre style="background:#161b22;padding:0.8rem;border:1px solid #30363d;overflow-x:auto;">
+awesome search vpn              # szukaj wsrod 234k narzedzi
+awesome search osint            # szukaj narzedzi OSINT
+awesome search docker           # szukaj narzedzi do dockera
+awesome repos osint             # szukaj repo (awesome lists)
+awesome list Security           # lista narzedzi z kategorii Security
+awesome top 20                  # top 20 repo wg gwiazdek
+awesome random                  # losowe 20 repo
+</pre>
+
+<!-- ==================== INSTALACJA ==================== -->
+<h2 id="install">Instalacja / deinstalacja narzedzi</h2>
+
+<p>Awesome Tools moze zainstalowac narzedzia direct z GitHuba (git clone).</p>
+
+<h3>CLI</h3>
+<pre style="background:#161b22;padding:0.8rem;border:1px solid #30363d;overflow-x:auto;">
+awesome install nmap            # klonuje repo do ~/installed/
+awesome install tool-name       # dowolne narzadzie z bazy
+awesome uninstall nmap          # usuwa zainstalowane
+awesome installed               # lista zainstalowanych
+awesome check                   # sprawdza czy sa aktualizacje
+</pre>
+
+<h3>Web (przegladarka)</h3>
+<p>Otworz szczegoly narzedzia (<a href="/tool/...">/tool/...</a>) — na dole zobaczysz komende instalacji.</p>
+
+<!-- ==================== KOLEKCJE ==================== -->
+<h2 id="collections">Kolekcje</h2>
+
+<p>Kolekcje to twoje wlasne listy narzedzi. Mozesz je tworzyc i zarzadzac nimi.</p>
+
+<h3>CLI</h3>
+<pre style="background:#161b22;padding:0.8rem;border:1px solid #30363d;overflow-x:auto;">
+awesome create moje-osint "Narzedzia OSINT"      # utworz kolekcje
+awesome add moje-osint nmap                       # dodaj narzedzie
+awesome add moje-osint sqlmap                     # dodaj nastepne
+awesome collection moje-osint                     # pokaz zawartosc
+awesome collections                               # lista wszystkich kolekcji
+</pre>
+
+<!-- ==================== CLI KOMENDY ==================== -->
+<h2 id="cli">Wszystkie komendy CLI</h2>
+
+<table style="width:100%;border-collapse:collapse;">
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome search &lt;query&gt;</td>
+    <td style="padding:0.4rem;">Szukaj narzedzi wsrod 234k</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome repos &lt;kategoria&gt;</td>
+    <td style="padding:0.4rem;">Szukaj repo (awesome lists)</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome list &lt;kategoria&gt;</td>
+    <td style="padding:0.4rem;">Lista narzedzi z kategorii</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome top [n]</td>
+    <td style="padding:0.4rem;">Top repo wg gwiazdek (domyslnie 10)</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome random</td>
+    <td style="padding:0.4rem;">Losowe repo</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome stats</td>
+    <td style="padding:0.4rem;">Statystyki bazy</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome install &lt;tool&gt;</td>
+    <td style="padding:0.4rem;">Zainstaluj narzedzie (git clone)</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome uninstall &lt;tool&gt;</td>
+    <td style="padding:0.4rem;">Odinstaluj narzedzie</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome installed</td>
+    <td style="padding:0.4rem;">Lista zainstalowanych narzedzi</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome check</td>
+    <td style="padding:0.4rem;">Sprawdz aktualizacje zainstalowanych</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome validate [n]</td>
+    <td style="padding:0.4rem;">Waliduj linki GitHub (n=limit, domyslnie 20)</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome fetch &lt;owner/repo&gt;</td>
+    <td style="padding:0.4rem;">Pobierz README z GitHub</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome topic &lt;topic&gt;</td>
+    <td style="padding:0.4rem;">Pobierz listy z topicem (np. awesome-osint)</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome rebuild</td>
+    <td style="padding:0.4rem;">Przebuduj indeks narzedzi</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome create &lt;name&gt; &lt;desc&gt;</td>
+    <td style="padding:0.4rem;">Utworz kolekcje</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome add &lt;collection&gt; &lt;tool&gt;</td>
+    <td style="padding:0.4rem;">Dodaj narzedzie do kolekcji</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome collection &lt;name&gt;</td>
+    <td style="padding:0.4rem;">Pokaz zawartosc kolekcji</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome collections</td>
+    <td style="padding:0.4rem;">Lista wszystkich kolekcji</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">awesome web [port]</td>
+    <td style="padding:0.4rem;">Uruchom serwer web (domyslnie 5001)</td>
+</tr>
+</table>
+
+<!-- ==================== WEB TRASY ==================== -->
+<h2 id="web">Trasy Web UI</h2>
+
+<table style="width:100%;border-collapse:collapse;">
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;"><a href="/">/</a></td>
+    <td style="padding:0.4rem;">Strona glowna — top listy, sekcje, szukanie</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;"><a href="/search">/search?q=coś</a></td>
+    <td style="padding:0.4rem;">Szukaj narzedzi</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;"><a href="/section/Security">/section/Security</a></td>
+    <td style="padding:0.4rem;">Narzedzia z sekcji (Security, Networking, itp.)</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">/list/&lt;owner/repo&gt;</td>
+    <td style="padding:0.4rem;">Narzedzia z konkretnej awesome listy</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;">/tool/&lt;url&gt;</td>
+    <td style="padding:0.4rem;">Szczegoly narzedzia + podobne + instalacja</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;"><a href="/random">/random</a></td>
+    <td style="padding:0.4rem;">Losowe 20 narzedzi</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;"><a href="/add">/add</a></td>
+    <td style="padding:0.4rem;">Dodaj repo / topic / przebuduj baze</td>
+</tr>
+<tr style="border-bottom:1px solid #30363d;">
+    <td style="padding:0.4rem;color:#58a6ff;"><a href="/help">/help</a></td>
+    <td style="padding:0.4rem;">Ta strona</td>
+</tr>
+</table>
+
+<!-- ==================== POBIERANIE DANYCH ==================== -->
+<h2 id="data">Pobieranie danych</h2>
+
+<p>Mozesz pobrac wiecej awesome list z GitHuba:</p>
+
+<pre style="background:#161b22;padding:0.8rem;border:1px solid #30363d;overflow-x:auto;">
+# Pobierz awesome listy po topic
+./download.sh awesome-list          # wszystkie awesome lists
+./download.sh awesome-osint         # OSINT
+./download.sh awesome-security      # bezpieczenstwo
+
+# Wyciagnij narzedzia z pobranych README
+python3 extract_tools.py
+
+# Przebuduj indeks
+./awesome rebuild
+</pre>
+
+<!-- ==================== FAQ ==================== -->
+<h2 id="faq">FAQ</h2>
+
+<h3>Jak dodac wlasne repo?</h3>
+<p>Otworz <a href="/add">/add</a> i wklej URL z GitHuba (np. https://github.com/user/repo). Narzedzia zostana pobrane automatycznie.</p>
+
+<h3>Jak sprawdzic czy link dziala?</h3>
+<pre style="background:#161b22;padding:0.8rem;border:1px solid #30363d;overflow-x:auto;">
+awesome validate 50   # sprawdza 50 losowych linkow
+</pre>
+
+<h3>Jak zainstalowac narzedzie?</h3>
+<p>W CLI: <code>awesome install nazwa-narzedzia</code><br>
+W web: otworz szczegoly narzedzia i skopiuj komende.</p>
+
+<h3>Gdzie sa zainstalowane narzedzia?</h3>
+<p>W katalogu <code>~/installed/</code> (git clone).</p>
+
+<h3>Jak przebudowac baze?</h3>
+<pre style="background:#161b22;padding:0.8rem;border:1px solid #30363d;overflow-x:auto;">
+awesome rebuild     # w terminalu
+</pre>
+<p>Lub w web: <a href="/add">/add</a> -> przycisk "Przebuduj".</p>
+
+{% endblock %}

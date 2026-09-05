@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ section_name }} - Awesome Tools{% endblock %}
+{% block content %}
+<h2>{{ section_name }} ({{ items|length }})</h2>
+<p><a href="/">← Wszystkie sekcje</a></p>
+<div style="margin-top: 1rem;">
+    {% for tool in items %}
+    <div class="tool">
+        <a href="{{ tool.url }}" target="_blank" class="name">{{ tool.name }}</a>
+        {% if tool.description %}<div class="desc">{{ tool.description[:150] }}</div>{% endif %}
+        <div class="meta">
+            {% if tool.subsection %}<span style="color: #8b949e;">{{ tool.subsection }}</span>{% endif %}
+            {% if tool.source_repo %} | via <a href="/search?q={{ tool.source_repo }}">{{ tool.source_repo }}</a>{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

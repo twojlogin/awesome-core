@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ repo.full_name }} - Awesome Core{% endblock %}
+{% block content %}
+<div style="background: #161b22; border: 1px solid #30363d; padding: 1rem; margin-bottom: 1rem;">
+    <h2 style="margin: 0 0 0.5rem 0;">{{ repo.full_name }}</h2>
+    <div style="color: #8b949e; font-size: 0.9rem;">
+        ⭐ {{ repo.stars or '?' }} | 🍴 {{ repo.forks or '?' }} | {{ repo.language or '?' }} | {{ repo.license or '?' }}
+    </div>
+    <div style="margin-top: 0.5rem;">{{ repo.description or '' }}</div>
+    <div style="margin-top: 0.5rem; font-size: 0.85rem;">
+        <a href="{{ repo.html_url }}" target="_blank" style="color: #58a6ff;">GitHub ↗</a> |
+        {% if repo.categories %}<a href="/category/{{ repo.categories.split(';')[0] }}" style="color: #58a6ff;">{{ repo.categories.split(';')[0] }}</a>{% endif %} |
+        <a href="/random" style="color: #58a6ff;">Losowe</a> |
+        <a href="/" style="color: #58a6ff;">Menu</a>
+    </div>
+</div>
+
+<div style="border: 1px solid #30363d; background: #0d1117;">
+    <div style="background: #161b22; padding: 0.5rem 1rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #58a6ff; font-weight: bold;">📄 README</span>
+        <div>
+            <button onclick="resize(-100)" style="background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 0.2rem 0.5rem; cursor: pointer;">-</button>
+            <button onclick="resize(100)" style="background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 0.2rem 0.5rem; cursor: pointer;">+</button>
+            <button onclick="openRaw()" style="background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 0.2rem 0.5rem; cursor: pointer;">Raw</button>
+        </div>
+    </div>
+    <div id="loading" style="padding: 2rem; color: #8b949e;">Ładowanie...</div>
+    <div id="readme" style="max-height: 500px; overflow-y: auto; padding: 1rem; display: none; font-size: 14px; line-height: 1.6;"></div>
+    <div id="error" style="padding: 2rem; color: #f85149; display: none;">Nie mozna zaladowac README</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+var h = 500, raw = '';
+function resize(d) { h = Math.max(200, Math.min(3000, h + d)); document.getElementById('readme').style.maxHeight = h + 'px'; }
+function openRaw() { if (raw) window.open(raw, '_blank'); }
+document.addEventListener('DOMContentLoaded', function() {
+    var o = '{{ repo.full_name.split("/")[0] }}', n = '{{ repo.full_name.split("/")[1] }}';
+    var urls = ['https://raw.githubusercontent.com/'+o+'/'+n+'/main/README.md', 'https://raw.githubusercontent.com/'+o+'/'+n+'/master/README.md'];
+    function try_(i) {
+        if (i >= urls.length) { document.getElementById('loading').style.display='none'; document.getElementById('error').style.display='block'; return; }
+        fetch(urls[i]).then(function(r) { if (!r.ok) throw 0; return r.text(); }).then(function(t) {
+            document.getElementById('loading').style.display='none';
+            document.getElementById('readme').innerHTML = marked.parse(t);
+            document.getElementById('readme').style.display='block';
+            raw = urls[i];
+        }).catch(function() { try_(i+1); });
+    }
+    try_(0);
+});
+</script>
+{% endblock %}

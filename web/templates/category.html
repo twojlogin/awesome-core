@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ cat }} - Awesome Core{% endblock %}
+{% block content %}
+<h2>{{ cat }} ({{ repos|length }})</h2>
+<p><a href="/" style="color: #58a6ff;">← Wszystkie kategorie</a></p>
+<div style="margin-top: 1rem;">
+    {% for repo in repos[:100] %}
+    <div style="background: #161b22; border: 1px solid #30363d; padding: 0.6rem 1rem; margin-bottom: 0.2rem;">
+        <a href="/repo/{{ repo.full_name }}" style="color: #58a6ff; text-decoration: none;">{{ repo.full_name }}</a>
+        <span style="color: #8b949e; margin-left: 0.5rem;">⭐ {{ repo.stars }}</span>
+        {% if repo.language %}<span style="color: #3fb950; margin-left: 0.5rem;">{{ repo.language }}</span>{% endif %}
+        {% if repo.description %}<span style="color: #484f58; margin-left: 0.5rem; font-size: 0.85rem;">{{ repo.description[:80] }}</span>{% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

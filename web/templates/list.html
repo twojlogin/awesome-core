@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} - Awesome Tools{% endblock %}
+{% block content %}
+<h2>{{ title }}</h2>
+<p style="color: #8b949e; margin-bottom: 1rem;">{{ subtitle }} | <a href="/">Wszystkie listy</a></p>
+
+{% if items %}
+<div style="margin-bottom: 1rem; color: #8b949e;">
+    {{ items|length }} narzędzi
+    {% if items[0].source_stars is defined %}
+    | Źródła z {{ items|selectattr('source_stars', 'gt', 0)|list|length }} list ze gwiazdkami
+    {% endif %}
+</div>
+{% endif %}
+
+{% for tool in items %}
+{% if not tool.source_stars is defined or tool.source_stars >= 10 %}
+<div class="tool">
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <a href="/tool/{{ tool.url }}" class="name">{{ tool.name }}</a>
+        {% if tool.source_stars is defined and tool.source_stars > 0 %}
+        <span style="color: #f0c040; font-size: 0.85em;">⭐ {{ "{:,}".format(tool.source_stars) }}</span>
+        {% endif %}
+    </div>
+    {% if tool.description %}<div class="desc">{{ tool.description[:200] }}</div>{% endif %}
+    <div class="meta">
+        {% if tool.section %}<a href="/section/{{ tool.section }}" style="color: #58a6ff;">{{ tool.section }}</a>{% endif %}
+        {% if tool.subsection %} > {{ tool.subsection }}{% endif %}
+        {% if tool.source_repo %}<span style="color: #6e7681;"> | {{ tool.source_repo }}</span>{% endif %}
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}

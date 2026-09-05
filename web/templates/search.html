@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ query }} - Awesome Tools{% endblock %}
+{% block content %}
+<h2>Wyniki: {{ query }} ({{ results|length }})</h2>
+<form action="/search" method="get" style="margin-bottom: 1rem;">
+    <input type="text" name="q" value="{{ query }}">
+    <button type="submit">Szukaj</button>
+    <select name="min_stars" style="background: #161b22; border: 1px solid #30363d; color: #c9d1d9; padding: 0.5rem; font-family: monospace;">
+        <option value="0" {% if min_stars == 0 %}selected{% endif %}>Wszystkie gwiazdki</option>
+        <option value="10" {% if min_stars == 10 %}selected{% endif %}>⭐ 10+</option>
+        <option value="100" {% if min_stars == 100 %}selected{% endif %}>⭐ 100+</option>
+        <option value="1000" {% if min_stars == 1000 %}selected{% endif %}>⭐ 1k+</option>
+        <option value="10000" {% if min_stars == 10000 %}selected{% endif %}>⭐ 10k+</option>
+    </select>
+    <label style="color: #8b949e; margin-left: 0.5rem;">
+        <input type="checkbox" name="alive" value="1" {% if alive_only %}checked{% endif %}>
+        Tylko żywe linki
+    </label>
+</form>
+{% for tool in results %}
+<div class="tool">
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <a href="/tool/{{ tool.url }}" class="name">{{ tool.name }}</a>
+        {% if tool.source_stars is defined and tool.source_stars > 0 %}
+        <span style="color: #f0c040; font-size: 0.85em;">⭐ {{ "{:,}".format(tool.source_stars) }}</span>
+        {% endif %}
+        {% if tool.alive is defined %}
+            {% if tool.alive %}
+            <span style="color: #3fb950; font-size: 0.85em;">✓</span>
+            {% else %}
+            <span style="color: #f85149; font-size: 0.85em;">✗</span>
+            {% endif %}
+        {% endif %}
+    </div>
+    {% if tool.description %}<div class="desc">{{ tool.description[:200] }}</div>{% endif %}
+    <div class="meta">
+        {% if tool.section %}<a href="/section/{{ tool.section }}" style="color: #58a6ff;">{{ tool.section }}</a>{% endif %}
+        {% if tool.source_repo %} → <a href="/list/{{ tool.source_repo }}">{{ tool.source_repo }}</a>{% endif %}
+    </div>
+</div>
+{% endfor %}
+{% if not results and query %}
+<p style="color: #8b949e; margin-top: 1rem;">Brak wyników.</p>
+{% endif %}
+{% endblock %}

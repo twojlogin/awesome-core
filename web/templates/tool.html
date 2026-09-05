@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ tool.name }} - Awesome Tools{% endblock %}
+{% block content %}
+<div style="margin-bottom: 1rem;">
+    <a href="javascript:history.back()" style="color: #8b949e;">← Wstecz</a>
+</div>
+
+<div style="background: #161b22; border: 1px solid #30363d; padding: 1rem; margin-bottom: 1.5rem;">
+    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <h2 style="margin: 0; color: #c9d1d9;">{{ tool.name }}</h2>
+        {% if tool.source_stars and tool.source_stars > 0 %}
+        <span style="color: #f0c040; font-size: 0.9em;">⭐ {{ "{:,}".format(tool.source_stars) }}</span>
+        {% endif %}
+    </div>
+    
+    {% if tool.description %}
+    <p style="color: #8b949e; margin-bottom: 0.8rem;">{{ tool.description }}</p>
+    {% endif %}
+    
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.8rem;">
+        <a href="{{ tool.url }}" target="_blank" style="background: #238636; padding: 0.3rem 0.8rem; border-radius: 4px;">Otwórz na GitHub</a>
+        {% if install %}
+        <button onclick="navigator.clipboard.writeText('{{ install.cmd }}')" style="background: #21262d; border: 1px solid #30363d; padding: 0.3rem 0.8rem; cursor: pointer;">📋 Kopiuj: {{ install.cmd }}</button>
+        {% endif %}
+    </div>
+    
+    <div style="color: #484f58; font-size: 0.85rem;">
+        {% if tool.section %}
+        <a href="/section/{{ tool.section }}" style="color: #58a6ff;">{{ tool.section }}</a>
+        {% if tool.subsection %} > {{ tool.subsection }}{% endif %}
+        {% endif %}
+        {% if tool.source_repo %}
+        <span style="margin-left: 0.5rem;">from: <a href="/list/{{ tool.source_repo }}" style="color: #58a6ff;">{{ tool.source_repo }}</a></span>
+        {% endif %}
+    </div>
+</div>
+
+{% if similar %}
+<h3 style="color: #58a6ff; margin-bottom: 0.5rem;">Podobne narzędzia</h3>
+{% for s in similar %}
+<div class="tool">
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <a href="/tool/{{ s.url }}" class="name">{{ s.name }}</a>
+        {% if s.source_stars and s.source_stars > 0 %}
+        <span style="color: #f0c040; font-size: 0.85em;">⭐ {{ "{:,}".format(s.source_stars) }}</span>
+        {% endif %}
+    </div>
+    {% if s.description %}<div class="desc">{{ s.description[:150] }}</div>{% endif %}
+    <div class="meta">
+        {% if s.source_repo %}<a href="/list/{{ s.source_repo }}" style="color: #6e7681;">{{ s.source_repo }}</a>{% endif %}
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

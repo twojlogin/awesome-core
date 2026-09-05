@@ -1,0 +1,16 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: monospace; background: #0d1117; color: #c9d1d9; }
+a { color: #58a6ff; text-decoration: none; }
+a:hover { text-decoration: underline; }
+nav { background: #161b22; padding: 0.8rem 2rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+.logo { font-weight: bold; font-size: 1.1rem; }
+main { max-width: 960px; margin: 1.5rem auto; padding: 0 1.5rem; }
+h2 { color: #58a6ff; margin-bottom: 0.8rem; font-size: 1.1rem; }
+input[type=text] { background: #161b22; border: 1px solid #30363d; color: #c9d1d9; padding: 0.5rem 1rem; width: 75%; font-family: monospace; font-size: 1rem; }
+button { background: #238636; border: none; color: white; padding: 0.5rem 1.5rem; cursor: pointer; font-family: monospace; font-size: 1rem; }
+.tool { background: #161b22; border: 1px solid #30363d; padding: 0.5rem 0.8rem; margin-bottom: 0.2rem; }
+.tool .name { font-weight: bold; }
+.tool .desc { color: #8b949e; font-size: 0.85rem; margin-top: 0.2rem; }
+.tool .meta { color: #484f58; font-size: 0.8rem; margin-top: 0.2rem; }
+.tag { display: inline-block; background: #21262d; border: 1px solid #30363d; padding: 0.2rem 0.5rem; margin: 0.1rem; font-size: 0.85rem; }
+.tag:hover { border-color: #58a6ff; text-decoration: none; }

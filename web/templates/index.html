@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Awesome Tools{% endblock %}
+{% block content %}
+<div style="background: #161b22; border: 1px solid #30363d; padding: 1rem; margin-bottom: 1.5rem;">
+    <h2 style="margin: 0 0 0.5rem 0;">{{ stats.total }} narzędzi | {{ stats.lists }} awesome list</h2>
+    <form action="/search" method="get">
+        <input type="text" name="q" placeholder="vpn, python, osint, docker...">
+        <button type="submit">Szukaj</button>
+    </form>
+</div>
+
+<h2>Top listy (wg gwiazdek)</h2>
+<div style="margin-bottom: 1.5rem;">
+    {% for name, count in top_lists %}
+    <div class="tool">
+        <a href="/list/{{ name }}" class="name">{{ name }}</a>
+        <span style="color: #3fb950; margin-left: 0.5rem;">{{ count }} narzędzi</span>
+    </div>
+    {% endfor %}
+</div>
+
+<h2>Sekcje</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
+    {% for name, count in top_sections %}
+    <a href="/section/{{ name }}" class="tag">{{ name }} <span style="color: #3fb950;">{{ count }}</span></a>
+    {% endfor %}
+</div>
+{% endblock %}

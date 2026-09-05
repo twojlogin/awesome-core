@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# awesome — wrapper dla awesome-core CLI
+ACTUAL="$(readlink -f "$0")"
+BASE_DIR="$(dirname "$ACTUAL")"
+exec python3 "$BASE_DIR/cli/awesome_cli.py" "$@"
