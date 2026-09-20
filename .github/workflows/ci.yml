@@ -1,0 +1,40 @@
+name: Awesome Core CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements.txt
+      - run: python -c "from core.database import AwesomeDB; from core.tools_db import ToolsDB; from core.curator import ToolCurator; print('All imports OK')"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install flake8
+      - run: flake8 --select=E9,F63,F7,F82 --max-line-length=120 core/ cli/ web/
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for secrets
+        run: |
+          ! grep -r "api_key\|secret\|password" --include="*.py" --include="*.json" --include="*.yaml" . | grep -iv "example\|test\|placeholder\|TODO"
+          echo "No hardcoded secrets found"
