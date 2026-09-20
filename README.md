@@ -70,6 +70,17 @@ Offline search accepts the same quality filters as the web interface:
 ./awesome audit jivoi/awesome-osint
 ```
 
+You can also keep a small local watch list. It never polls in the background:
+only `watch check` makes one explicit GitHub API request and stores a snapshot
+without the token:
+
+```bash
+./awesome watch add owner/repo
+./awesome watch list
+./awesome watch check owner/repo
+./awesome watch remove owner/repo
+```
+
 For one repository, users with their own GitHub API access can request an
 optional online audit. The token is read from `GITHUB_TOKEN` or `gh auth token`
 and is never stored:

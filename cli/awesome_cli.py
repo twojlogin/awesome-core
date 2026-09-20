@@ -42,6 +42,7 @@ from core.database import AwesomeDB
 from core.tools_db import ToolsDB
 from core.curator import ToolCurator
 from core.trust import assess_repo, audit_repo, github_token
+from core.watcher import RepoWatcher
 
 BASE_DIR = Path(__file__).parent.parent
 README_DIR = BASE_DIR / "offline-db" / "data" / "readmes"
@@ -215,6 +216,47 @@ def cmd_audit(db, name, online=False):
     if not report["info"] and not report["attention"]:
         print("  Brak dodatkowych informacji do sprawdzenia.")
     print("  To są wskazówki, nie ocena złośliwości. Przejrzyj kod i release'y przed instalacją.")
+
+
+def cmd_watch(args):
+    if not args or (args[0] != "list" and len(args) < 2):
+        print("Użycie: awesome watch add|list|check|remove [owner/repo]")
+        return
+    watcher = RepoWatcher()
+    action = args[0]
+    name = args[1] if len(args) > 1 else None
+    try:
+        if action == "add" and name:
+            watcher.add(name)
+            print(f"Dodano do obserwowanych: {name}")
+        elif action == "remove" and name:
+            print("Usunięto." if watcher.remove(name) else "Repozytorium nie było obserwowane.")
+        elif action == "list":
+            entries = watcher.list()
+            if not entries:
+                print("Brak obserwowanych repozytoriów.")
+                return
+            for entry in entries:
+                snapshot = entry.get("snapshot") or {}
+                checked = snapshot.get("checked_at", "jeszcze nie sprawdzano")
+                print(f"{entry['repo']} — ostatnie sprawdzenie: {checked}")
+        elif action == "check" and name:
+            token = github_token()
+            if not token:
+                print("Brak tokena. Ustaw GITHUB_TOKEN albo zaloguj gh CLI.")
+                return
+            snapshot, changes = watcher.check(name, token)
+            print(f"Sprawdzono {name}: {snapshot['stars']} stars, {snapshot['forks']} forks")
+            if changes:
+                print("Zmiany od poprzedniego sprawdzenia:")
+                for field, change in changes.items():
+                    print(f"  {field}: {change['old']} -> {change['new']}")
+            else:
+                print("Brak zmian od poprzedniego sprawdzenia.")
+        else:
+            print("Użycie: awesome watch add|list|check|remove [owner/repo]")
+    except (RuntimeError, ValueError) as exc:
+        print(f"Watcher: {exc}")
 
 
 def cmd_stats(db, tools_db, curator):
@@ -533,6 +575,8 @@ def main():
         cmd_random(db)
     elif cmd == "audit" and len(sys.argv) > 2:
         cmd_audit(db, sys.argv[2], "--online" in sys.argv[3:])
+    elif cmd == "watch":
+        cmd_watch(sys.argv[2:])
     elif cmd == "stats":
         cmd_stats(db, tools_db, curator)
     elif cmd == "top":
