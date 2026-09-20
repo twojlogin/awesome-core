@@ -4,6 +4,7 @@ awesome — CLI do Awesome Tools Manager
 Użycie:
   awesome search <query> [opcje]  — szukaj narzędzi offline
   awesome info <tool>             — pokaż szczegóły przed instalacją
+  awesome demo                    — pokaż lokalne demo bez sieci
   awesome repos <kategoria>       — szukaj repo (awesome lists)
   awesome list <kategoria>        — lista z kategorii
   awesome random                  — losowe repo
@@ -123,6 +124,37 @@ def cmd_info(tools_db, repo_db, curator, name):
     method = curator.detect_install_method(tool)
     print(f"  Instalacja: {method or 'brak automatycznej metody'}")
     print("  Przed instalacją przejrzyj repozytorium i jego instrukcję.")
+
+
+def cmd_demo(db, tools_db):
+    """Show the main offline workflow using the local dataset."""
+    print("\n=== Awesome Core — demo offline ===")
+    if not tools_db.tools:
+        print("Brak lokalnych danych.")
+        print("Uruchom najpierw: ./download.sh awesome-list && python3 extract_tools.py")
+        return
+
+    print(f"Lokalne narzędzia: {tools_db.stats['total']}")
+    print(f"Lokalne awesome-listy: {tools_db.stats['lists']}")
+    print("\nPrzykład: wyszukiwanie OSINT")
+    results = tools_db.search("osint", limit=3)
+    print_tools(results, 3)
+
+    print("\nPrzykład: wyszukiwanie z jakością")
+    results = tools_db.search("security", limit=3, min_stars=10)
+    if results:
+        print_tools(results, 3)
+    else:
+        print("Brak wyników z filtrem 10+ gwiazdek.")
+        print("Odzyskana baza nie ma jeszcze metadanych gwiazdek.")
+        print("Po odświeżeniu indeksu online ten filtr zacznie działać.")
+
+    print("\nDalej możesz użyć:")
+    print("  ./awesome info <nazwa>")
+    print("  ./awesome audit <owner/repo>")
+    print("  ./awesome web")
+    if db.repos:
+        print(f"\nRepozytoria w lokalnym indeksie: {len(db.repos)}")
 
 
 def cmd_repos(db, query):
@@ -489,6 +521,8 @@ def main():
         cmd_ask(tools_db, question)
     elif cmd == "info" and len(sys.argv) > 2:
         cmd_info(tools_db, db, curator, " ".join(sys.argv[2:]))
+    elif cmd == "demo":
+        cmd_demo(db, tools_db)
     elif cmd == "repos" and len(sys.argv) > 2:
         query = " ".join(sys.argv[2:])
         cmd_repos(db, query)

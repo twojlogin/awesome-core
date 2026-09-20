@@ -37,6 +37,14 @@ python3 extract_tools.py
 ./awesome search docker
 ```
 
+To see the project without learning the commands first:
+
+```bash
+./awesome demo
+```
+
+The demo uses only the local dataset and never calls GitHub or an AI provider.
+
 ### OSINT / security quick start
 
 Awesome Core is especially useful as a local catalogue for reconnaissance and
