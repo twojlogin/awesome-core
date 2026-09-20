@@ -6,6 +6,7 @@ import subprocess
 import os
 from pathlib import Path
 from collections import defaultdict
+from urllib.parse import urlparse
 
 
 class ToolCurator:
@@ -102,9 +103,13 @@ class ToolCurator:
             return None
         
         url_lower = url.lower()
+        parsed = urlparse(url)
         
         # Git repos (GitHub, GitLab, etc.)
-        if "github.com" in url_lower or "gitlab.com" in url_lower or "bitbucket.org" in url_lower:
+        if parsed.scheme in {"http", "https"} and parsed.netloc.lower() in {
+            "github.com", "www.github.com", "gitlab.com", "www.gitlab.com",
+            "bitbucket.org", "www.bitbucket.org",
+        }:
             return "git"
         
         # Python packages
@@ -151,7 +156,12 @@ class ToolCurator:
         install_dir = Path(install_dir)
         install_dir.mkdir(parents=True, exist_ok=True)
         
-        safe_name = url.rstrip("/").split("/")[-1]
+        parsed = urlparse(url)
+        safe_name = Path(parsed.path.rstrip("/")).name
+        if not safe_name:
+            return {"status": "error", "message": "Invalid repository URL"}
+        if safe_name.endswith(".git"):
+            safe_name = safe_name[:-4]
         target_dir = install_dir / safe_name
         
         if target_dir.exists():
@@ -167,6 +177,7 @@ class ToolCurator:
                     "url": url,
                     "method": "git",
                     "path": str(target_dir),
+                    "install_dir": str(install_dir.resolve()),
                     "installed_at": __import__("datetime").datetime.now().isoformat()
                 }
                 self._save_installed()
@@ -184,6 +195,13 @@ class ToolCurator:
         
         info = self.installed[tool_name]
         path = Path(info["path"])
+        install_root = Path(
+            info.get("install_dir", Path.home() / ".local" / "share" / "awesome-tools")
+        ).resolve()
+        try:
+            path.resolve().relative_to(install_root)
+        except ValueError:
+            return {"status": "error", "message": "Refusing to remove a path outside the install directory"}
         
         if path.exists():
             import shutil

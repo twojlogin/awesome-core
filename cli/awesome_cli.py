@@ -2,7 +2,8 @@
 """
 awesome — CLI do Awesome Tools Manager
 Użycie:
-  awesome search <query>          — szukaj narzędzi
+  awesome search <query> [opcje]  — szukaj narzędzi offline
+  awesome info <tool>             — pokaż szczegóły przed instalacją
   awesome repos <kategoria>       — szukaj repo (awesome lists)
   awesome list <kategoria>        — lista z kategorii
   awesome random                  — losowe repo
@@ -13,6 +14,7 @@ Użycie:
   awesome installed               — lista zainstalowanych
   awesome check                   — sprawdź aktualizacje
   awesome validate [n]            — waliduj linki GitHub (n=limit)
+  awesome audit <owner/repo>      — sygnały ryzyka (--online opcjonalnie)
   awesome collection <name>       — pokaż kolekcję
   awesome collections             — lista kolekcji
   awesome create <name> <desc>    — utwórz kolekcję
@@ -22,6 +24,11 @@ Użycie:
   awesome rebuild                 — przebuduj indeks
   awesome ask <pytanie>           — AI Bibliotekarz: pytanie po ludzku -> narzędzia
   awesome web [port]              — uruchamia Flask
+
+Opcje search:
+  --limit N                       — liczba wyników (domyślnie 20)
+  --min-stars N                   — minimalne gwiazdki listy źródłowej
+  --alive                         — tylko wcześniej zweryfikowane żywe linki
 """
 
 import sys
@@ -33,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.database import AwesomeDB
 from core.tools_db import ToolsDB
 from core.curator import ToolCurator
+from core.trust import assess_repo, audit_repo, github_token
 
 BASE_DIR = Path(__file__).parent.parent
 README_DIR = BASE_DIR / "offline-db" / "data" / "readmes"
@@ -79,11 +87,42 @@ def print_tools(results, limit=20):
         print(f"  ... i {len(results) - limit} więcej")
 
 
-def cmd_search_tools(tools_db, query):
+def cmd_search_tools(tools_db, query, limit=20, min_stars=0, alive_only=False):
     print(f"\nSzukaj narzędzi: {query}")
-    results = tools_db.search(query)
+    results = tools_db.search(
+        query, limit=limit, min_stars=min_stars, alive_only=alive_only
+    )
     print(f"Znaleziono: {len(results)}\n")
-    print_tools(results)
+    print_tools(results, limit)
+
+
+def cmd_info(tools_db, repo_db, curator, name):
+    tool = curator.get_tool_by_name(name) or tools_db.get_tool_by_url(name)
+    if not tool:
+        print(f"Nie znaleziono narzędzia: {name}")
+        return
+
+    print(f"\n{tool.get('name', name)}")
+    print(f"  URL: {tool.get('url', '')}")
+    if tool.get("description"):
+        print(f"  Opis: {tool['description']}")
+    print(f"  Sekcja: {tool.get('section') or 'Other'}")
+    if tool.get("subsection"):
+        print(f"  Podsekcja: {tool['subsection']}")
+    source = tool.get("source_repo", "")
+    if source:
+        print(f"  Źródło: {source}")
+        print(f"  Gwiazdki listy: {tool.get('source_stars', 0)}")
+        print(f"  Język listy: {tool.get('source_language') or '?'}")
+        repo = repo_db.get_repo(source)
+        if repo:
+            report = assess_repo(repo)
+            print(f"  Sygnały repo: {report['status']}")
+            for item in report["attention"]:
+                print(f"    ! {item}")
+    method = curator.detect_install_method(tool)
+    print(f"  Instalacja: {method or 'brak automatycznej metody'}")
+    print("  Przed instalacją przejrzyj repozytorium i jego instrukcję.")
 
 
 def cmd_repos(db, query):
@@ -112,6 +151,38 @@ def cmd_random(db):
         print(f"  URL: {repo.get('html_url', '')}")
     else:
         print("Brak repo w bazie.")
+
+
+def cmd_audit(db, name, online=False):
+    repo = db.get_repo(name)
+    if not repo and not online:
+        print(f"Nie znaleziono repozytorium: {name}")
+        return
+    if online:
+        token = github_token()
+        if not token:
+            print("Brak tokena. Ustaw GITHUB_TOKEN albo zaloguj gh CLI.")
+            return
+        try:
+            report = audit_repo(name, token)
+        except (RuntimeError, ValueError) as exc:
+            print(f"Audyt online nieudany: {exc}")
+            return
+    else:
+        report = assess_repo(repo)
+    print(f"\nOcena sygnałów: {name}")
+    print(f"  Status: {report['status']}")
+    if report["info"]:
+        print("  Informacje:")
+        for item in report["info"]:
+            print(f"    - {item}")
+    if report["attention"]:
+        print("  Warto sprawdzić:")
+        for item in report["attention"]:
+            print(f"    - {item}")
+    if not report["info"] and not report["attention"]:
+        print("  Brak dodatkowych informacji do sprawdzenia.")
+    print("  To są wskazówki, nie ocena złośliwości. Przejrzyj kod i release'y przed instalacją.")
 
 
 def cmd_stats(db, tools_db, curator):
@@ -235,7 +306,7 @@ def cmd_web(port=None):
     if port is None:
         port = find_free_port()
     print(f"Uruchamiam Flask na http://localhost:{port}")
-    app.run(debug=True, port=port)
+    app.run(debug=False, port=port)
 
 
 def load_index():
@@ -385,11 +456,39 @@ def main():
     cmd = sys.argv[1]
 
     if cmd == "search" and len(sys.argv) > 2:
-        query = " ".join(sys.argv[2:])
-        cmd_search_tools(tools_db, query)
+        args = sys.argv[2:]
+        query_parts = []
+        limit = 20
+        min_stars = 0
+        alive_only = False
+        i = 0
+        while i < len(args):
+            if args[i] == "--alive":
+                alive_only = True
+            elif args[i] in {"--limit", "--min-stars"} and i + 1 < len(args):
+                try:
+                    value = max(0, int(args[i + 1]))
+                except ValueError:
+                    print(f"Nieprawidłowa wartość: {args[i + 1]}")
+                    return
+                if args[i] == "--limit":
+                    limit = max(1, value)
+                else:
+                    min_stars = value
+                i += 1
+            else:
+                query_parts.append(args[i])
+            i += 1
+        query = " ".join(query_parts).strip()
+        if not query:
+            print("Użycie: awesome search <query> [--limit N] [--min-stars N] [--alive]")
+            return
+        cmd_search_tools(tools_db, query, limit, min_stars, alive_only)
     elif cmd == "ask" and len(sys.argv) > 2:
         question = " ".join(sys.argv[2:])
         cmd_ask(tools_db, question)
+    elif cmd == "info" and len(sys.argv) > 2:
+        cmd_info(tools_db, db, curator, " ".join(sys.argv[2:]))
     elif cmd == "repos" and len(sys.argv) > 2:
         query = " ".join(sys.argv[2:])
         cmd_repos(db, query)
@@ -398,6 +497,8 @@ def main():
         cmd_list(db, cat)
     elif cmd == "random":
         cmd_random(db)
+    elif cmd == "audit" and len(sys.argv) > 2:
+        cmd_audit(db, sys.argv[2], "--online" in sys.argv[3:])
     elif cmd == "stats":
         cmd_stats(db, tools_db, curator)
     elif cmd == "top":

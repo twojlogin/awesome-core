@@ -79,14 +79,24 @@ while :; do
         break
     fi
 
-    echo "$resp" | jq -r '.items[] | .full_name + " " + .html_url' \
-        | while read -r full url; do
+    while IFS=$'\t' read -r full url stars forks language topics created pushed archived license; do
             owner=$(echo "$full" | cut -d/ -f1)
             name=$(echo "$full" | cut -d/ -f2)
             safe_name="${owner}__${name}"
             readme_file="$README_DIR/${safe_name}.md"
 
             if [ -f "$readme_file" ]; then
+                jq --arg n "$full" --arg o "$owner" --arg na "$name" \
+                    --argjson stars "${stars:-0}" --argjson forks "${forks:-0}" \
+                    --arg language "$language" --arg topics "$topics" \
+                    --arg created "$created" --arg pushed "$pushed" \
+                    --argjson archived "${archived:-false}" --arg license "$license" \
+                    '. + {($n): ((.[$n] // {}) + {owner: $o, name: $na,
+                    stars: $stars, forks: $forks, language: $language,
+                    topics: $topics, created_at: $created, pushed_at: $pushed,
+                    archived: $archived, license: $license,
+                    readme_downloaded: true})}' \
+                    "$INDEX_FILE" > "${INDEX_FILE}.tmp" && mv "${INDEX_FILE}.tmp" "$INDEX_FILE"
                 SKIP_COUNT=$((SKIP_COUNT + 1))
                 continue
             fi
@@ -108,13 +118,26 @@ while :; do
             fi
 
             jq --arg n "$full" --arg o "$owner" --arg na "$name" \
-                '. + {($n): {owner: $o, name: $na, readme_downloaded: true, downloaded_at: (now | todate)}}' \
+                --argjson stars "${stars:-0}" --argjson forks "${forks:-0}" \
+                --arg language "$language" --arg topics "$topics" \
+                --arg created "$created" --arg pushed "$pushed" \
+                --argjson archived "${archived:-false}" --arg license "$license" \
+                '. + {($n): ((.[$n] // {}) + {owner: $o, name: $na,
+                stars: $stars, forks: $forks, language: $language,
+                topics: $topics, created_at: $created, pushed_at: $pushed,
+                archived: $archived, license: $license,
+                readme_downloaded: true,
+                downloaded_at: (now | todate)})}' \
                 "$INDEX_FILE" > "${INDEX_FILE}.tmp" && mv "${INDEX_FILE}.tmp" "$INDEX_FILE"
 
             NEW_COUNT=$((NEW_COUNT + 1))
             echo "  + $full"
             sleep 0.3
-        done
+    done < <(echo "$resp" | jq -r '.items[] |
+        [.full_name, .html_url, (.stargazers_count // 0), (.forks_count // 0),
+         (.language // ""), ((.topics // []) | join(";")),
+         (.created_at // ""), (.pushed_at // ""), (.archived // false),
+         (.license.spdx_id // "")] | @tsv')
 
     PAGE=$((PAGE + 1))
 done

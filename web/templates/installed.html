@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Zainstalowane - Awesome Tools{% endblock %}
+{% block content %}
+<h2>Zainstalowane narzędzia ({{ installed|length }})</h2>
+<p style="color: #8b949e; margin-bottom: 1rem;">
+    Lokalne instalacje zarządzane przez Awesome Core.
+</p>
+
+{% if not installed %}
+<div class="tool">
+    Brak zainstalowanych narzędzi.
+    <a href="/search?q=osint">Znajdź pierwsze narzędzie</a>
+</div>
+{% endif %}
+
+{% for name, info in installed.items() %}
+<div class="tool">
+    <div style="display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+        <strong>{{ name }}</strong>
+        <form action="/tool/action" method="post">
+            <input type="hidden" name="tool_name" value="{{ name }}">
+            <button name="action" value="uninstall" type="submit"
+                    onclick="return confirm('Odinstalować {{ name }}?');"
+                    style="background: #da3633; padding: 0.3rem 0.8rem;">
+                Odinstaluj
+            </button>
+        </form>
+    </div>
+    <div class="meta">Metoda: {{ info.get('method', '?') }}</div>
+    <div class="meta">Ścieżka: {{ info.get('path', '?') }}</div>
+    {% if info.get('installed_at') %}
+    <div class="meta">Zainstalowano: {{ info['installed_at'] }}</div>
+    {% endif %}
+    {% if info.get('url') %}
+    <div class="meta"><a href="{{ info['url'] }}" target="_blank">Repozytorium ↗</a></div>
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

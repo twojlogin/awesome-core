@@ -7,6 +7,22 @@
         ⭐ {{ repo.stars or '?' }} | 🍴 {{ repo.forks or '?' }} | {{ repo.language or '?' }} | {{ repo.license or '?' }}
     </div>
     <div style="margin-top: 0.5rem;">{{ repo.description or '' }}</div>
+    <div style="margin-top: 0.75rem; padding: 0.6rem; border: 1px solid #30363d;">
+        <strong>Kontrola sygnałów:</strong> {{ trust.status }}
+        {% if trust.info %}
+        <div style="margin-top: 0.4rem; color: #8b949e;">Informacje:</div>
+        <ul style="margin: 0.2rem 0 0 1.2rem; color: #8b949e;">
+            {% for item in trust.info %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        {% if trust.attention %}
+        <div style="margin-top: 0.4rem; color: #f0c040;">Warto sprawdzić:</div>
+        <ul style="margin: 0.2rem 0 0 1.2rem; color: #f0c040;">
+            {% for item in trust.attention %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        <small style="color: #8b949e;">To wskazówki do oceny, nie etykieta złośliwości.</small>
+    </div>
     <div style="margin-top: 0.5rem; font-size: 0.85rem;">
         <a href="{{ repo.html_url }}" target="_blank" style="color: #58a6ff;">GitHub ↗</a> |
         {% if repo.categories %}<a href="/category/{{ repo.categories.split(';')[0] }}" style="color: #58a6ff;">{{ repo.categories.split(';')[0] }}</a>{% endif %} |

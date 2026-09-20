@@ -18,6 +18,9 @@ class AwesomeDB:
         self.csv_path = self.data_dir / "summary_enriched.csv"
         if not self.csv_path.exists():
             self.csv_path = self.data_dir / "summary.csv"
+        self.index_path = (
+            Path(__file__).parent.parent / "offline-db" / "data" / "index.json"
+        )
         self.repos = []
         self.categories = defaultdict(list)
         self.stats = {}
@@ -52,10 +55,26 @@ class AwesomeDB:
             return ""
 
     def load(self):
-        if not self.csv_path.exists():
+        if self.csv_path.exists():
+            with open(self.csv_path, "r", encoding="utf-8") as f:
+                self.repos = list(csv.DictReader(f))
+        elif self.index_path.exists():
+            with open(self.index_path, "r", encoding="utf-8") as f:
+                index = json.load(f)
+            self.repos = []
+            for full_name, metadata in index.items():
+                repo = dict(metadata)
+                repo["full_name"] = full_name
+                repo.setdefault("html_url", f"https://github.com/{full_name}")
+                repo.setdefault("description", "")
+                repo.setdefault("categories", "")
+                repo.setdefault("topics", "")
+                repo.setdefault("stars", 0)
+                repo.setdefault("forks", 0)
+                repo.setdefault("language", "")
+                self.repos.append(repo)
+        else:
             return
-        with open(self.csv_path, "r", encoding="utf-8") as f:
-            self.repos = list(csv.DictReader(f))
         self.categories = defaultdict(list)
         for repo in self.repos:
             cats = repo.get("categories", "")
@@ -72,7 +91,7 @@ class AwesomeDB:
             "categories": {k: len(v) for k, v in self.categories.items()},
         }
 
-    def search(self, query):
+    def search(self, query, limit=100, min_stars=0, alive_only=False):
         q = query.lower().strip()
         if not q:
             return []
@@ -129,10 +148,15 @@ class AwesomeDB:
                     match_in.add("readme")
             if score > 0:
                 stars = int(repo.get("stars") or 0)
+                if stars < min_stars:
+                    continue
+                alive = str(repo.get("alive", "")).lower()
+                if alive_only and alive in {"false", "0", "no"}:
+                    continue
                 star_boost = math.log10(max(stars, 1)) * 3
                 results.append((repo, score + star_boost, list(match_in)))
         results.sort(key=lambda x: x[1], reverse=True)
-        return [(r, m) for r, s, m in results]
+        return [(r, m) for r, s, m in results[:limit]]
 
     def list_category(self, cat):
         return self.categories.get(cat.lower(), [])

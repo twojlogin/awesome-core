@@ -20,9 +20,24 @@
     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.8rem;">
         <a href="{{ tool.url }}" target="_blank" style="background: #238636; padding: 0.3rem 0.8rem; border-radius: 4px;">Otwórz na GitHub</a>
         {% if install %}
-        <button onclick="navigator.clipboard.writeText('{{ install.cmd }}')" style="background: #21262d; border: 1px solid #30363d; padding: 0.3rem 0.8rem; cursor: pointer;">📋 Kopiuj: {{ install.cmd }}</button>
+        <code id="install-command" style="background: #0d1117; padding: 0.4rem 0.6rem;">{{ install.cmd }}</code>
+        <button onclick="copyInstallCommand()" style="background: #21262d; border: 1px solid #30363d; padding: 0.3rem 0.8rem; cursor: pointer;">📋 Kopiuj komendę</button>
         {% endif %}
+        <form action="/tool/action" method="post" style="display: inline;">
+            <input type="hidden" name="tool_name" value="{{ tool.name }}">
+            <button name="action" value="install" type="submit" onclick="return confirm('Uruchomić kontrolowaną instalację tego narzędzia?');" style="background: #238636; border: 1px solid #2ea043; padding: 0.3rem 0.8rem; cursor: pointer;">▶ Zainstaluj lokalnie</button>
+        </form>
     </div>
+
+    <script>
+    function copyInstallCommand() {
+        var command = document.getElementById('install-command');
+        if (!command) return;
+        navigator.clipboard.writeText(command.textContent).then(function() {
+            alert('Komenda skopiowana');
+        });
+    }
+    </script>
     
     <div style="color: #484f58; font-size: 0.85rem;">
         {% if tool.section %}
@@ -34,6 +49,13 @@
         {% endif %}
     </div>
 </div>
+
+{% if source_readme %}
+<details style="background: #0d1117; border: 1px solid #30363d; padding: 0.8rem; margin-bottom: 1.5rem;">
+    <summary style="color: #58a6ff; cursor: pointer;">📄 Czytaj lokalny README źródłowej listy</summary>
+    <pre style="white-space: pre-wrap; max-height: 520px; overflow-y: auto; margin-top: 0.8rem; color: #c9d1d9; font: inherit;">{{ source_readme }}</pre>
+</details>
+{% endif %}
 
 {% if similar %}
 <h3 style="color: #58a6ff; margin-bottom: 0.5rem;">Podobne narzędzia</h3>

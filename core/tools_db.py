@@ -69,13 +69,16 @@ class ToolsDB:
             name = tool.get("name", "").lower()
             desc = tool.get("description", "").lower()
             src = tool.get("source_repo", "").lower()
-            source_stars = tool.get("source_stars", 0)
+            try:
+                source_stars = int(tool.get("source_stars", 0) or 0)
+            except (TypeError, ValueError):
+                source_stars = 0
             alive = tool.get("alive")
 
             if source_stars < min_stars:
                 continue
 
-            if alive_only and alive is False:
+            if alive_only and str(alive).lower() in {"false", "0", "no"}:
                 continue
 
             score = 0

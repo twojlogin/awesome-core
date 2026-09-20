@@ -28,7 +28,7 @@ pip install -r requirements.txt
 # 3. Download data (first run)
 ./download.sh awesome-list
 
-# 4. Extract tools
+# 4. Extract tools and build the local search index
 python3 extract_tools.py
 
 # 5. Search!
@@ -36,6 +36,62 @@ python3 extract_tools.py
 ./awesome search osint
 ./awesome search docker
 ```
+
+### OSINT / security quick start
+
+Awesome Core is especially useful as a local catalogue for reconnaissance and
+security tooling:
+
+```bash
+./awesome search osint
+./awesome search reconnaissance
+./awesome search subdomain
+./awesome search port scanner
+./awesome collections
+```
+
+Review a tool's repository before installing it. Git installation is limited
+to repositories hosted on GitHub, GitLab, or Bitbucket.
+
+Offline search accepts the same quality filters as the web interface:
+
+```bash
+./awesome search osint --limit 20
+./awesome search reconnaissance --min-stars 100
+./awesome search subdomain --alive
+./awesome audit jivoi/awesome-osint
+```
+
+For one repository, users with their own GitHub API access can request an
+optional online audit. The token is read from `GITHUB_TOKEN` or `gh auth token`
+and is never stored:
+
+```bash
+GITHUB_TOKEN=... ./awesome audit owner/repo --online
+```
+
+Repository metadata can show neutral maintenance information (for example,
+that a project is archived or has not changed recently) and separate signals
+worth checking manually. An old project may still be a valuable gem; these
+signals do not label a project as safe or malicious.
+
+The normal workflow is offline after the initial download:
+
+```text
+online:  download.sh -> README files + repository metadata
+local:   extract_tools.py -> tools.json + search_index.json
+offline: awesome CLI / TUI / Web -> search, read, filter, collect, install
+```
+
+In the Web UI, a tool page shows the install command with a copy button and a
+controlled local install action. It is not an arbitrary shell terminal: only
+the supported Awesome Core install operation can be triggered from the page.
+The `/installed` page lists local installations and provides controlled
+uninstall actions.
+Tool pages can also expand the locally cached README of the awesome-list that
+provided the tool, so browsing the catalogue does not require a network call.
+The Web UI footer includes a small coffee easter egg; it does not collect
+payments or send data anywhere.
 
 ## Features
 
@@ -46,7 +102,7 @@ python3 extract_tools.py
 | **<20ms search** | Inverted index, fuzzy matching |
 | **Install tools** | `git clone`, `pip install`, `npm install` |
 | **Collections** | Build your own curated tool lists |
-| **AI Librarian** | Ask in natural language, get tool recommendations |
+| **Data pipeline** | Download, enrich, filter and sort awesome lists locally |
 | **Web UI** | Beautiful Flask dashboard |
 | **CLI** | Full terminal interface |
 | **TUI** | Curses-based terminal UI |
@@ -56,7 +112,9 @@ python3 extract_tools.py
 
 ```bash
 # Tools
-awesome search <query>           # search 234k tools
+awesome search <query>           # offline search
+awesome search <query> --min-stars 100
+awesome search <query> --limit 50
 awesome install <tool>           # install (git clone)
 awesome uninstall <tool>         # uninstall
 awesome installed                # list installed
@@ -78,9 +136,6 @@ awesome add <collection> <tool>  # add to collection
 awesome collections              # list collections
 awesome collection <name>        # show collection
 
-# AI
-awesome ask <question>           # natural language search
-
 # Web
 awesome web [port]               # launch Flask UI
 ```
@@ -91,6 +146,11 @@ awesome web [port]               # launch Flask UI
 python3 web/app.py              # auto-port
 python3 web/app.py 8888         # specific port
 ```
+
+The core workflow does not require an AI provider or API tokens. The optional
+AI endpoint is rate-limited and caches identical questions for five minutes.
+Set `AWESOME_SECRET_KEY` in the environment when persistent Flask sessions are
+needed.
 
 | Route | Description |
 |-------|-------------|

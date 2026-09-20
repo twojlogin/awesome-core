@@ -3,17 +3,28 @@
 
 import sys
 import json
+import os
 import subprocess
+import time
 from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, flash
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from core.database import AwesomeDB
 from core.tools_db import ToolsDB
+from core.curator import ToolCurator
 from core.ai_librarian import recommend as ai_recommend
+from core.trust import assess_repo
 
 app = Flask(__name__)
-app.secret_key = "awesome-tools"
+app.secret_key = os.environ.get("AWESOME_SECRET_KEY") or os.urandom(32)
 db = ToolsDB()
+repo_db = AwesomeDB()
+curator = ToolCurator()
+AI_CACHE_TTL = 300
+AI_MIN_INTERVAL = 10
+_ai_cache = {}
+_ai_last_request = {}
 
 BASE_DIR = Path(__file__).parent.parent
 README_DIR = BASE_DIR / "offline-db" / "data" / "readmes"
@@ -28,6 +39,19 @@ def load_index():
 
 def save_index(idx):
     INDEX_FILE.write_text(json.dumps(idx, indent=2, ensure_ascii=False))
+
+
+def read_local_readme(repo_name):
+    metadata = repo_db.readme_index.get(repo_name)
+    if not metadata:
+        return ""
+    readme_file = README_DIR / f"{metadata['owner']}__{metadata['name']}.md"
+    if not readme_file.exists():
+        return ""
+    try:
+        return readme_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def fetch_readme(owner, name):
@@ -54,13 +78,21 @@ def fetch_readme(owner, name):
 
 @app.route("/")
 def index():
-    return render_template("index.html", stats=db.stats, top_sections=db.top_sections(15), top_lists=db.top_lists(15))
+    return render_template(
+        "index.html",
+        stats=db.stats,
+        top_sections=db.top_sections(15),
+        top_lists=db.top_lists(15),
+    )
 
 
 @app.route("/search")
 def search():
     q = request.args.get("q", "").strip()
-    min_stars = int(request.args.get("min_stars", 0))
+    try:
+        min_stars = max(0, int(request.args.get("min_stars", 0)))
+    except (TypeError, ValueError):
+        min_stars = 0
     alive_only = request.args.get("alive", "0") == "1"
     results = db.search(q, limit=100, min_stars=min_stars, alive_only=alive_only) if q else []
     return render_template("search.html", results=results, query=q, min_stars=min_stars, alive_only=alive_only)
@@ -70,6 +102,21 @@ def search():
 def section(name):
     items = db.by_section(name, limit=300)
     return render_template("list.html", items=items, title=name, subtitle=f"sekcja")
+
+
+@app.route("/repo/<path:name>")
+def repo_detail(name):
+    repo = repo_db.get_repo(name)
+    if not repo:
+        flash(f"Repozytorium '{name}' nie znalezione", "error")
+        return redirect(url_for("index"))
+    return render_template("repo.html", repo=repo, trust=assess_repo(repo))
+
+
+@app.route("/category/<name>")
+def category(name):
+    repos = repo_db.list_category(name)
+    return render_template("category.html", cat=name, repos=repos)
 
 
 @app.route("/list/<path:repo>")
@@ -91,7 +138,35 @@ def tool_detail(url):
 
     similar = db.find_similar(tool, limit=5)
     install_info = db.get_install_info(tool)
-    return render_template("tool.html", tool=tool, similar=similar, install=install_info)
+    source_readme = read_local_readme(tool.get("source_repo", ""))
+    return render_template(
+        "tool.html",
+        tool=tool,
+        similar=similar,
+        install=install_info,
+        source_readme=source_readme,
+    )
+
+
+@app.route("/tool/action", methods=["POST"])
+def tool_action():
+    name = request.form.get("tool_name", "").strip()
+    action = request.form.get("action", "").strip()
+    tool = curator.get_tool_by_name(name)
+    if not tool or action not in {"install", "uninstall"}:
+        flash("Nieprawidłowa akcja narzędzia", "error")
+        return redirect(url_for("index"))
+
+    result = (
+        curator.install_tool(name)
+        if action == "install"
+        else curator.uninstall_tool(name)
+    )
+    if result["status"] in {"installed", "already_installed", "uninstalled"}:
+        flash(result.get("message", "Gotowe"), "success")
+    else:
+        flash(result.get("message", "Akcja nieudana"), "error")
+    return redirect(url_for("tool_detail", url=tool.get("url", "")))
 
 
 @app.route("/random")
@@ -103,6 +178,11 @@ def random_page():
 @app.route("/help")
 def help_page():
     return render_template("help.html")
+
+
+@app.route("/installed")
+def installed_page():
+    return render_template("installed.html", installed=curator.list_installed())
 
 
 @app.route("/add", methods=["GET", "POST"])
@@ -143,7 +223,7 @@ def add_repo():
 
 @app.route("/add/topic", methods=["POST"])
 def add_topic():
-    topic = request.args.get("topic", "").strip()
+    topic = request.form.get("topic", "").strip()
     if not topic:
         flash("Podaj topic", "error")
         return redirect(url_for("add_repo"))
@@ -209,11 +289,23 @@ def api_ai_ask():
     if not q:
         return {"error": "parametr 'q' wymagany"}, 400
     try:
-        limit = min(int(request.values.get("limit", 5)), 10)
-    except ValueError:
+        limit = max(1, min(int(request.values.get("limit", 5)), 10))
+    except (TypeError, ValueError):
         limit = 5
+    client = request.remote_addr or "local"
+    cache_key = (q.lower(), limit)
+    now = time.monotonic()
+    cached = _ai_cache.get(cache_key)
+    if cached and now - cached[0] < AI_CACHE_TTL:
+        return cached[1]
+    last_request = _ai_last_request.get(client, 0)
+    if now - last_request < AI_MIN_INTERVAL:
+        return {"error": "Za dużo zapytań AI. Spróbuj ponownie za chwilę."}, 429
+    _ai_last_request[client] = now
     try:
-        return ai_recommend(db, q, limit=limit)
+        result = ai_recommend(db, q, limit=limit)
+        _ai_cache[cache_key] = (now, result)
+        return result
     except RuntimeError as e:
         return {"error": str(e)}, 503
 

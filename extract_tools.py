@@ -5,6 +5,7 @@ import os
 import re
 import json
 import csv
+import logging
 from pathlib import Path
 from collections import defaultdict
 
@@ -13,7 +14,9 @@ README_DIR = Path(__file__).parent / "offline-db" / "data" / "readmes"
 INDEX_FILE = Path(__file__).parent / "offline-db" / "data" / "index.json"
 TOOLS_FILE = Path(__file__).parent / "data" / "tools.json"
 TOOLS_CSV = Path(__file__).parent / "data" / "tools.csv"
+SEARCH_INDEX_FILE = Path(__file__).parent / "data" / "search_index.json"
 SUMMARY_FILE = Path(__file__).parent / "data" / "summary_enriched.csv"
+LOGGER = logging.getLogger(__name__)
 
 
 def load_repo_stars():
@@ -25,7 +28,19 @@ def load_repo_stars():
                 name = row.get("full_name", "").lower()
                 s = int(row.get("stars", 0) or 0)
                 stars[name] = s
+    if INDEX_FILE.exists():
+        with open(INDEX_FILE, encoding="utf-8") as f:
+            for name, meta in json.load(f).items():
+                stars.setdefault(name.lower(), int(meta.get("stars", 0) or 0))
     return stars
+
+
+def load_repo_metadata():
+    """Load repository metadata captured during the GitHub download."""
+    if not INDEX_FILE.exists():
+        return {}
+    with open(INDEX_FILE, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def extract_tools_from_readme(content, repo_name):
@@ -86,7 +101,7 @@ def extract_tools_from_readme(content, repo_name):
     return tools
 
 
-def filter_tools(tools, repo_stars):
+def filter_tools(tools, repo_stars, repo_metadata=None):
     """Filter low quality and duplicates, add stars."""
     seen_urls = {}
     filtered = []
@@ -112,6 +127,12 @@ def filter_tools(tools, repo_stars):
         # Add source stars
         repo_lower = tool.get("source_repo", "").lower()
         tool["source_stars"] = repo_stars.get(repo_lower, 0)
+        metadata = (repo_metadata or {}).get(tool.get("source_repo", ""), {})
+        tool["source_forks"] = int(metadata.get("forks", 0) or 0)
+        tool["source_language"] = metadata.get("language", "")
+        tool["source_topics"] = metadata.get("topics", "")
+        for field in ("created_at", "pushed_at", "archived", "license"):
+            tool[f"source_{field}"] = metadata.get(field, "")
 
         # Skip tools from repos with < 5 stars (probably junk)
         # But keep if it has a good description
@@ -123,6 +144,21 @@ def filter_tools(tools, repo_stars):
     return filtered
 
 
+def build_search_index(tools):
+    """Build the word-to-tool index used by ToolsDB."""
+    index = defaultdict(list)
+    for i, tool in enumerate(tools):
+        text = f"{tool.get('name', '')} {tool.get('description', '')}"
+        words = set()
+        for word in text.lower().split():
+            word = word.strip('.,;:!?()[]{}"\' -/')
+            if len(word) >= 2:
+                words.add(word)
+        for word in words:
+            index[word].append(i)
+    return dict(index)
+
+
 def main():
     print("Loading README index...")
     with open(INDEX_FILE) as f:
@@ -131,6 +167,7 @@ def main():
     print(f"Found {len(index)} READMEs to parse")
 
     repo_stars = load_repo_stars()
+    repo_metadata = load_repo_metadata()
     print(f"Loaded stars for {len(repo_stars)} repos")
 
     all_tools = []
@@ -144,8 +181,8 @@ def main():
             content = readme_path.read_text(encoding="utf-8", errors="replace")
             tools = extract_tools_from_readme(content, repo_name)
             all_tools.extend(tools)
-        except Exception:
-            pass
+        except (OSError, UnicodeError, KeyError, ValueError) as exc:
+            LOGGER.warning("Could not parse %s: %s", repo_name, exc)
 
         if (i + 1) % 200 == 0:
             print(f"  Parsed {i+1}/{len(index)} READMEs, {len(all_tools)} raw tools")
@@ -153,7 +190,15 @@ def main():
     print(f"\nRaw tools: {len(all_tools)}")
 
     # Filter
-    filtered = filter_tools(all_tools, repo_stars)
+    filtered = filter_tools(all_tools, repo_stars, repo_metadata)
+    filtered.sort(
+        key=lambda tool: (
+            int(tool.get("source_stars", 0) or 0),
+            bool(tool.get("description")),
+            tool.get("name", "").lower(),
+        ),
+        reverse=True,
+    )
     print(f"After filter: {len(filtered)}")
 
     # Save as JSON
@@ -162,12 +207,20 @@ def main():
     print(f"Saved to {TOOLS_FILE}")
 
     # Save as CSV
-    fields = ["name", "url", "description", "section", "subsection", "source_repo", "source_stars"]
+    fields = [
+        "name", "url", "description", "section", "subsection", "source_repo",
+        "source_stars", "source_forks", "source_language", "source_topics",
+        "source_created_at", "source_pushed_at", "source_archived", "source_license",
+    ]
     with open(TOOLS_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(filtered)
     print(f"Saved to {TOOLS_CSV}")
+
+    with open(SEARCH_INDEX_FILE, "w", encoding="utf-8") as f:
+        json.dump(build_search_index(filtered), f, ensure_ascii=False)
+    print(f"Saved to {SEARCH_INDEX_FILE}")
 
     # Stats
     print(f"\nStats:")
