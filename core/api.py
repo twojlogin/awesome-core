@@ -61,6 +61,17 @@ def mode():
     return "anonymous"
 
 
+def speedup_hint():
+    """Podpowiedź zależna od tego, co w ogóle jest zainstalowane.
+
+    Dawniej sugerowałem "gh auth login" również na maszynie, gdzie gh nie ma —
+    czyli podpowiedź, której nikt nie może wykonać.
+    """
+    if gh_path():
+        return "gh auth login"
+    return "ustaw GITHUB_TOKEN=... (albo zainstaluj GitHub CLI)"
+
+
 def describe():
     """Co program powie człowiekowi na starcie."""
     how = {
@@ -70,7 +81,7 @@ def describe():
         "anonymous": "bez logowania (najwolniej, search 10/min, rdzeń działa)",
     }[mode()]
     if mode() in {"gh", "anonymous"}:
-        how += " — opcjonalnie: gh auth login albo GITHUB_TOKEN=... (przyspiesza)"
+        how += f" — przyspieszysz: {speedup_hint()}"
     return how
 
 

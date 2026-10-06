@@ -623,6 +623,9 @@ class TestAutomation(unittest.TestCase):
         api_mod.token = lambda: ""
         self.assertEqual(api_mod.mode(), "anonymous")
         self.assertIn("bez logowania", api_mod.describe())
+        self.assertNotIn("gh auth login", api_mod.describe(),
+                         "nie podpowiadaj komendy, której nie da się wykonać")
+        self.assertIn("GITHUB_TOKEN", api_mod.speedup_hint())
         self.assertGreater(api_mod.search_pause(), 0,
                            "bez tokena musi zwalniać, inaczej GitHub odcina")
 

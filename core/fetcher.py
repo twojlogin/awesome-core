@@ -114,8 +114,8 @@ def download(topic="awesome-list", wide=True, refresh=False, sort="stars",
         print(f"[*] GitHub: {api.describe()}")
         if api.search_pause():
             print("[*] Bez logowania czekam między stronami, bo GitHub "
-                  "dopuszcza 10 zapytań na minutę. Można przyspieszyć: "
-                  "gh auth login")
+                  "dopuszcza 10 zapytań na minutę. Przyspieszysz: "
+                  f"{api.speedup_hint()}")
     README_DIR.mkdir(parents=True, exist_ok=True)
     queries = [f"topic:{topic}"] + (QUERIES_WIDE[1:] if wide else [])
     new = skipped = missing = 0

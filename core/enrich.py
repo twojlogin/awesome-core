@@ -279,8 +279,8 @@ def enrich(limit=None, verbose=True, batch_size=BATCH_SIZE, pause=PAUSE,
         if verbose:
             print("Pomijam enrich: pobieranie metadanych wymaga GitHub CLI (gh).")
             print("  Bez tego ranking nadal działa — opiera się na zgodzie kuratorów.")
-            print("  Żeby dociągnąć prawdziwe gwiazdki: zainstaluj gh, potem "
-                  "gh auth login")
+            print("  Żeby dociągnąć prawdziwe gwiazdki: zainstaluj GitHub CLI, "
+                  "potem gh auth login")
         return 0
     if not github_token():
         if verbose:
