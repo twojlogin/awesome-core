@@ -20,7 +20,7 @@ def collect(data_dir=None):
             "ready": False,
             "db": str(path),
             "steps": [
-                {"id": "download", "label": "Pobierz listy", "command": "./download.sh awesome-list 100 1 20 --wide"},
+                {"id": "download", "label": "Pobierz listy", "command": "./awesome download"},
                 {"id": "build", "label": "Zbuduj bazę", "command": "./awesome build"},
             ],
         }
@@ -89,7 +89,7 @@ def collect(data_dir=None):
             "id": "download",
             "label": "Pobrać brakujące README",
             "why": f"{lists_total - readmes} list bez lokalnej kopii README",
-            "command": "./download.sh awesome-list 100 1 20 --wide",
+            "command": "./awesome download",
         })
     if lists_no_meta:
         steps.append({

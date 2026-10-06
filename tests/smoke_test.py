@@ -16,7 +16,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from core import aliases, clones, langmap, md, mcp, parser, scoring, untrusted  # noqa: E402
+from core import aliases, clones, fetcher, langmap, md, mcp, parser, scoring, untrusted  # noqa: E402
 from core.builder import build  # noqa: E402
 from core.database import AwesomeDB  # noqa: E402
 from core import status as status_mod  # noqa: E402
@@ -370,6 +370,117 @@ class TestClones(unittest.TestCase):
         self.assertEqual(stats["clones"], 2)
 
 
+class TestFetcher(unittest.TestCase):
+    """Pobieranie list bez shella — inaczej Windows się sypie.
+
+    Testy offline: gh_api i fetch_readme są podmienione, więc sprawdzamy
+    logikę (pomijanie, pętla paginacji, index.json), a nie sieć.
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self._saved = (fetcher.BASE_DIR, fetcher.DATA_DIR,
+                       fetcher.README_DIR, fetcher.INDEX_FILE,
+                       fetcher.gh_api, fetcher.fetch_readme, fetcher.gh_token)
+        fetcher.DATA_DIR = self.tmp / "data"
+        fetcher.README_DIR = fetcher.DATA_DIR / "readmes"
+        fetcher.INDEX_FILE = fetcher.DATA_DIR / "index.json"
+        fetcher.gh_token = lambda: "token"
+        self.pages = {}
+        fetcher.gh_api = self._fake_api
+        fetcher.fetch_readme = self._fake_readme
+        self.requested = []
+
+    def tearDown(self):
+        (fetcher.BASE_DIR, fetcher.DATA_DIR, fetcher.README_DIR, fetcher.INDEX_FILE,
+         fetcher.gh_api, fetcher.fetch_readme, fetcher.gh_token) = self._saved
+
+    @staticmethod
+    def _item(full, stars=10):
+        return {"full_name": full, "stargazers_count": stars,
+                "html_url": f"https://github.com/{full}", "language": "Markdown",
+                "topics": ["awesome-list"]}
+
+    def _fake_api(self, endpoint, token, retries=3):
+        self.requested.append(endpoint)
+        # rsplit, bo "per_page=100" też zawiera w sobie "page="
+        page = int(endpoint.rsplit("page=", 1)[1].split("&")[0])
+        return {"items": self.pages.get(page, [])}
+
+    @staticmethod
+    def _fake_readme(full, token):
+        if "empty" in full:
+            return None
+        return f"# {full}\n\n## Tools\n\n- [t](https://github.com/a/b) — narzędzie\n"
+
+    def test_writes_readme_and_index(self):
+        self.pages = {1: [self._item("acme/awesome-x", stars=500)]}
+        status, new, skipped, missing = fetcher.download(
+            wide=False, verbose=False)
+        self.assertEqual(status, 0)
+        self.assertEqual((new, skipped, missing), (1, 0, 0))
+        readme = fetcher.README_DIR / "acme__awesome-x.md"
+        self.assertTrue(readme.exists())
+        index = json.loads(fetcher.INDEX_FILE.read_text(encoding="utf-8"))
+        self.assertEqual(index["acme/awesome-x"]["stars"], 500)
+        self.assertTrue(index["acme/awesome-x"]["readme_downloaded"])
+
+    def test_skips_existing_without_refetching(self):
+        fetcher.README_DIR.mkdir(parents=True, exist_ok=True)
+        (fetcher.README_DIR / "acme__awesome-x.md").write_text("stare", encoding="utf-8")
+        self.pages = {1: [self._item("acme/awesome-x")]}
+        _status, new, skipped, _missing = fetcher.download(wide=False, verbose=False)
+        self.assertEqual((new, skipped), (0, 1))
+        self.assertEqual((fetcher.README_DIR / "acme__awesome-x.md").read_text(
+            encoding="utf-8"), "stare")
+
+    def test_refresh_overwrites(self):
+        fetcher.README_DIR.mkdir(parents=True, exist_ok=True)
+        (fetcher.README_DIR / "acme__awesome-x.md").write_text("stare", encoding="utf-8")
+        self.pages = {1: [self._item("acme/awesome-x")]}
+        _status, new, skipped, _missing = fetcher.download(
+            wide=False, refresh=True, verbose=False)
+        self.assertEqual((new, skipped), (1, 0))
+        self.assertIn("## Tools", (fetcher.README_DIR / "acme__awesome-x.md").read_text(
+            encoding="utf-8"))
+
+    def test_repo_without_readme_is_not_in_index(self):
+        """Nie ma README = nie ma wpisu w index.json. W przeciwnym razie build
+        liczyłby narzędzia z listy, której u nas nie ma."""
+        self.pages = {1: [self._item("acme/empty-one"), self._item("acme/awesome-x")]}
+        fetcher.download(wide=False, verbose=False)
+        index = json.loads(fetcher.INDEX_FILE.read_text(encoding="utf-8"))
+        self.assertIn("acme/awesome-x", index)
+        self.assertNotIn("acme/empty-one", index)
+
+    def test_pagination_loop_is_detected(self):
+        """GitHub Search i tak ma limit 1000 wyników; bez wykrywania pętli
+        pytanie krążyłoby po tej samej stronie w nieskończoność.
+
+        Strona 1 musi być pełna (100 wyników), inaczej pętla kończy się
+        wcześniej na "krótka strona = koniec" i nie dochodzi do sprawdzenia.
+        """
+        full_page = [self._item("acme/one")] + [
+            self._item(f"acme/repo-{i}") for i in range(99)
+        ]
+        self.pages = {1: full_page, 2: [self._item("acme/one")]}
+        fetcher.download(wide=False, verbose=False)
+        self.assertEqual(len(self.requested), 2)
+        self.assertTrue(any("page=2" in url for url in self.requested))
+
+    def test_short_page_ends_pagination(self):
+        self.pages = {1: [self._item("acme/one")]}
+        fetcher.download(wide=False, verbose=False)
+        self.assertEqual(len(self.requested), 1)
+
+    def test_limit_stops_early(self):
+        self.pages = {1: [self._item(f"acme/one-{i}") for i in range(5)]}
+        _status, new, _skipped, _missing = fetcher.download(
+            wide=False, verbose=False, limit=2)
+        self.assertEqual(new, 2)
+
+
 class TestCliIsForgiving(unittest.TestCase):
     """Żadna komenda nie może wywalić się tracebackiem na głupim wejściu.
 
@@ -439,6 +550,39 @@ class TestCliIsForgiving(unittest.TestCase):
         self.assertIn("PowerShell", out)
         self.assertNotIn("Traceback", out)
 
+    def test_missing_database_says_what_to_run(self):
+        """Pusta baza to nie "brak wyników", tylko instrukcja."""
+        from cli import awesome_cli
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(SystemExit) as ctx:
+                awesome_cli.require_database(tmp)
+            self.assertEqual(ctx.exception.code, 1)
+
+    def test_empty_database_says_what_to_run(self):
+        import sqlite3 as sqlite3_mod
+
+        from cli import awesome_cli
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            data.mkdir()
+            conn = sqlite3_mod.connect(data / "awesome.db")
+            conn.execute("CREATE TABLE tools (id INTEGER PRIMARY KEY, name TEXT)")
+            conn.commit()
+            conn.close()
+            with self.assertRaises(SystemExit):
+                awesome_cli.require_database(tmp)
+
+    def test_bootstrap_detects_flask_without_network(self):
+        from core import bootstrap
+
+        # flask jest w CI (requirements.txt), więc tu musi być True
+        self.assertTrue(bootstrap.has_flask())
+        self.assertTrue(bootstrap.venv_python().name.startswith("python"))
+        # blokada przed zapętleniem przy ponownej próbie
+        self.assertEqual(bootstrap.GUARD_ENV, "AWESOME_NO_VENV_RETRY")
+
     def test_help_and_unknown_command_are_clean(self):
         import subprocess
 
@@ -469,9 +613,11 @@ class TestNoAIinCore(unittest.TestCase):
     # validator.py sprawdza czy linki żyją (tylko przy "awesome validate"),
     # aliases.py potrafi dociągnąć zdalną listę aliasów — oba na wyraźne
     # polecenie. md.py ma urllib.parse, ale to parsowanie tekstu, nie sieć.
+    # fetcher.py to świadomy pobieracz (zamiennik download.sh), więc sieć
+    # w nim jest z założenia — i tylko wtedy, gdy user odpali pobieranie.
     NETWORK_OK = {"trust.py", "aliases.py", "curator.py", "enrich.py",
                   "backfill.py", "mcp.py", "status.py", "builder.py",
-                  "validator.py"}
+                  "validator.py", "fetcher.py", "bootstrap.py"}
 
     def _imports(self, path):
         """Pełne nazwy modułów ('urllib.request'), bo same korzenie kłamią."""

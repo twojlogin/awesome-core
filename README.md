@@ -45,13 +45,16 @@ samo w tle — zawsze widzisz postęp.
 
 ## Co musisz mieć zanim zaczniesz
 
-Trzy rzeczy, wszystkie darmowe:
+Dwie rzeczy, obie darmowe:
 
 | Potrzebujesz | Po co | Sprawdzenie |
 |---|---|---|
 | **Python 3.8+** | program | `python3 --version` |
 | **gh** (GitHub CLI) | pobieranie list i metadanych (logujesz się raz) | `gh --version` |
-| **jq** i **curl** | pomocnicze narzędzia do pobierania | `jq --version && curl --version` |
+
+**Nie potrzebujesz** jq, curl ani samodzielnego `python -m venv`. Pobieranie
+jest napisane w Pythonie (`core/fetcher.py`), a `./awesome web` samo tworzy
+środowisko i instaluje Flask, mówiąc na ekranie co robi.
 
 Instalacja na Linuksie:
 
@@ -60,12 +63,18 @@ sudo apt install python3 jq curl        # albo: sudo dnf install python3 jq curl
 gh auth login                          # zaloguj się do GitHuba (jednorazowo)
 ```
 
-**A Windows?** Działa, ale musisz mieć powłokę z `bash` (najprościej
-[Git Bash](https://git-scm.com/downloads), wbudowany w Git for Windows) albo
-WSL. Sam `awesome` to skrypt Pythona, ale `download.sh` jest skryptem shella —
-w PowerShellu samo `./awesome` zadziała, ale samo `./download.sh` nie.
+**Windows działa bez basha.** W katalogu jest `awesome.cmd`, więc w PowerShellu
+albo po podwójnym kliknięciu piszesz po prostu:
 
-W PowerShellu odpowiedniki komend:
+```powershell
+awesome.cmd start
+awesome.cmd web
+```
+
+`download.sh` został, ale to już tylko nakładka wywołująca Pythona — w nim nie
+ma już ani `jq`, ani `curl`, ani pętli w shellu.
+
+W PowerShellu odpowiedniki reszty komend:
 
 ```powershell
 gh auth login                 # potem reszta jak w Linuxie
@@ -73,12 +82,18 @@ gh auth login                 # potem reszta jak w Linuxie
 .\awesome web
 ```
 
-Reszta (Flask do web UI) instaluje się sama:
+Flask do web UI instaluje się **sam**, przy pierwszym `./awesome web`:
 
-```bash
-python3 -m venv venv && source venv/bin/activate
-pip install flask
 ```
+Web UI potrzebuje Flaska. Przygotowuję środowisko (requirements.txt):
+  Tworzę venv…
+  Aktualizuję pip…
+  Instaluję z requirements.txt…
+  Gotowe. Od teraz web używa venv/.
+```
+
+Jeśli z jakiegoś powodu to się nie uda (brak sieci, proxy), program wypisze
+instrukcję ręczną — ale nie musisz jej pamiętać na co dzień.
 
 **Nie musisz** znać SQL, programować, nic konfigurować w środku i **nie musisz**
 nic aktualizować automatycznie. Jak coś nie działa — `./awesome status` powie

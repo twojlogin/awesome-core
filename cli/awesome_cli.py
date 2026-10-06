@@ -429,8 +429,13 @@ Potem: ./awesome web"""
 
 
 def cmd_web(port=None):
-    # Bez tego ktoś bez flask dostaje ModuleNotFoundError i traceback,
-    # czyli wniosek "ten program się nie uruchamia".
+    # Nie każemy użytkownikowi wpisywać venv/activate/pip. Brakuje flaska?
+    # Tworzymy środowisko sami i mówimy co robimy. Dopiero gdy się nie uda,
+    # pokazujemy instrukcję ręczną.
+    from core import bootstrap
+
+    if bootstrap.relaunch_with_flask():
+        return
     try:
         import flask  # noqa: F401
     except ImportError:
@@ -495,18 +500,22 @@ def cmd_fetch(repo_str):
     print(f"Błąd: nie znaleziono README dla {full}")
 
 
-def cmd_topic(topic, sort="stars", wide=True):
-    """Pobiera listy. --wide = kilka zapytań (limit GitHuba to 1000 wyników)."""
-    args = ["bash", str(BASE_DIR / "download.sh"), topic, "100", "1", "20"]
-    if sort:
-        args.extend(["--sort", sort])
-    if wide:
-        args.append("--wide")
+def cmd_topic(topic, sort="stars", wide=True, limit=None):
+    """Pobiera listy. --wide = kilka zapytań (limit GitHuba to 1000 wyników).
+
+    Cała logika jest w core/fetcher.py (Python), bo bash + jq nie działały
+    na Windowsie. Ten sam kod obsługuje ./download.sh, więc nie ma dwóch
+    prawd do utrzymania.
+    """
+    from core import fetcher
+
     print(f"Pobieram topic: {topic}" + (" (kilka zapytań)" if wide else ""))
-    result = subprocess.run(args, cwd=str(BASE_DIR), check=False)
-    if result.returncode != 0:
-        print(f"Zakończone z kodem {result.returncode} — sprawdź `./awesome status`.")
-    print("Gotowe. Następny krok: ./awesome build")
+    status, new, skipped, missing = fetcher.download(
+        topic=topic, wide=wide, sort=sort, limit=limit)
+    if status != 0:
+        print(f"Pobieranie zakończone z kodem {status} — `./awesome status` "
+              f"powie, co zostało.")
+    print(f"Gotowe. Następny krok: ./awesome build   (potem ./awesome backfill)")
 
 
 def cmd_build(export=None):
@@ -678,8 +687,9 @@ def cmd_status():
 REQUIRED_TOOLS = [
     ("python3", "Python 3.8+ — sam program"),
     ("gh", "GitHub CLI — pobieranie list (gh auth login)"),
-    ("jq", "jq — obróbka JSON z GitHuba"),
-    ("curl", "curl — pobieranie plików"),
+    # jq i curl były wymagane dla download.sh. Od kiedy pobieranie jest
+    # w Pythonie (core/fetcher.py), wymaganie ich tylko blokowało ludzi —
+    # szczególnie na Windowsie, gdzie jq i curl często nie ma w PATH.
 ]
 
 
@@ -721,9 +731,10 @@ def cmd_start(args):
         for problem in problems:
             print(f"  ✗ {problem}")
         print("\nNa Linuksie zwykle wystarczy:")
-        print("  sudo apt install python3 jq curl    # albo: sudo dnf install python3 jq curl")
-        print("  gh auth login                       # logowanie do GitHuba")
-        print("\nSprawdź potem: gh --version && jq --version && curl --version")
+        print("  sudo apt install python3           # albo: sudo dnf install python3")
+        print("  gh auth login                      # logowanie do GitHuba")
+        print("\nSprawdź potem: gh --version")
+        print("Nie potrzebujesz jq ani curl — pobieranie jest w Pythonie.")
         return 1
 
     state = status_mod.collect(BASE_DIR / "data")
@@ -884,6 +895,42 @@ def cmd_check(curator):
             print(f"  {name}: {info['method']} (bez weryfikacji)")
 
 
+def require_database(base_dir, quiet=False):
+    """Pusta albo nieistniejąca baza to nie "brak wyników".
+
+    Bez tego ktoś, kto sklonował repo i odpalił szukaj, widzi "Znaleziono: 0"
+    i myśli, że program nie działa. Mówimy wprost, co odpalić, i kończymy
+    kodem 1 — nie wypisujemy pustej tabeli.
+    """
+    db_file = Path(base_dir) / "data" / "awesome.db"
+    if not db_file.exists():
+        if not quiet:
+            print("\nNie ma jeszcze bazy. Zbuduj ją jednym poleceniem:")
+            print("  ./awesome start")
+            print("\n(Pobiera awesome listy z GitHuba i buduje indeks. "
+                  "10–25 min.)")
+        raise SystemExit(1)
+    from core import store
+
+    try:
+        with store.connect(Path(base_dir) / "data", read_only=True) as probe:
+            count = probe.execute("SELECT COUNT(*) FROM tools").fetchone()[0]
+    except Exception:
+        count = 0
+    if count == 0:
+        if not quiet:
+            print("\nBaza jest pusta — build nic z niej nie wyciągnął.")
+            print("  ./awesome build      # przebuduj z pobranych README")
+            print("  ./awesome status     # co dokładnie brakuje")
+        raise SystemExit(1)
+
+
+def store_connect_readonly():
+    from core import store
+
+    return store.connect(BASE_DIR / "data", read_only=True)
+
+
 def _flag(args, name):
     """Wartość flagi albo None — bez awarii na dziwnym wejściu."""
     if name not in args:
@@ -960,6 +1007,7 @@ def main():
         return
 
     def dbs():
+        require_database(BASE_DIR)
         return ToolsDB(), AwesomeDB(), ToolCurator()
 
     if cmd == "search" and args:
@@ -1094,6 +1142,9 @@ def main():
             int(args[args.index("--limit") + 1]) if "--limit" in args else None,
             non_github="--non-github" in args,
         )
+    elif cmd in {"download", "pobierz"} and args:
+        cmd_topic(args[0], wide="--narrow" not in args,
+                  limit=_limit_from(args, None))
     elif cmd == "export" and args:
         # Nie: cmd_export(args[0], args[1] ...) — brało "--out" jako ścieżkę
         # i pisało plik o nazwie "--out" (171 MB) zamiast podanego miejsca.
