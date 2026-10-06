@@ -42,7 +42,10 @@ CREATE TABLE IF NOT EXISTS repos (
     meta_fetched_at     TEXT NOT NULL DEFAULT '',
     quality             REAL NOT NULL DEFAULT 0,
     tool_count          INTEGER NOT NULL DEFAULT 0,
-    unique_tool_count   INTEGER NOT NULL DEFAULT 0
+    unique_tool_count   INTEGER NOT NULL DEFAULT 0,
+    clone_of            TEXT NOT NULL DEFAULT '',
+    is_fork             INTEGER NOT NULL DEFAULT 0,
+    parent              TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS tools (
@@ -69,6 +72,7 @@ CREATE TABLE IF NOT EXISTS tools (
     alive_reason    TEXT NOT NULL DEFAULT '',
     lists_count     INTEGER NOT NULL DEFAULT 0,
     owners_count    INTEGER NOT NULL DEFAULT 0,
+    clones_skipped  INTEGER NOT NULL DEFAULT 0,
     lists_stars     INTEGER NOT NULL DEFAULT 0,
     score           REAL NOT NULL DEFAULT 0,
     underrated      REAL NOT NULL DEFAULT 0,
@@ -97,6 +101,20 @@ CREATE TABLE IF NOT EXISTS tool_mentions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mentions_repo ON tool_mentions(source_repo);
+
+CREATE TABLE IF NOT EXISTS list_similarity (
+    canonical   TEXT NOT NULL,
+    clone       TEXT NOT NULL,
+    shared      INTEGER NOT NULL DEFAULT 0,
+    overlap     REAL NOT NULL DEFAULT 0,
+    clone_size  INTEGER NOT NULL DEFAULT 0,
+    same_owner  INTEGER NOT NULL DEFAULT 0,
+    via_chain   INTEGER NOT NULL DEFAULT 0,
+    computed_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (canonical, clone)
+);
+
+CREATE INDEX IF NOT EXISTS idx_similarity_clone ON list_similarity(clone);
 
 CREATE TABLE IF NOT EXISTS shortlist (
     url_norm TEXT PRIMARY KEY,
@@ -145,7 +163,7 @@ REPO_TEXT_FIELDS = (
 )
 
 
-REPO_BOOL_FIELDS = ("archived", "readme_downloaded")
+REPO_BOOL_FIELDS = ("archived", "readme_downloaded", "is_fork")
 
 
 def db_path(data_dir=None):
@@ -191,6 +209,7 @@ EXTRA_COLUMNS = {
         "install_method": "TEXT NOT NULL DEFAULT ''",
         "tool_stars": "INTEGER NOT NULL DEFAULT 0",
         "tool_forks": "INTEGER NOT NULL DEFAULT 0",
+        "clones_skipped": "INTEGER NOT NULL DEFAULT 0",
         "tool_archived": "INTEGER NOT NULL DEFAULT 0",
         "alive": "INTEGER",
         "alive_reason": "TEXT NOT NULL DEFAULT ''",
@@ -201,6 +220,9 @@ EXTRA_COLUMNS = {
         "tool_count": "INTEGER NOT NULL DEFAULT 0",
         "unique_tool_count": "INTEGER NOT NULL DEFAULT 0",
         "meta_fetched_at": "TEXT NOT NULL DEFAULT ''",
+        "clone_of": "TEXT NOT NULL DEFAULT ''",
+        "is_fork": "INTEGER NOT NULL DEFAULT 0",
+        "parent": "TEXT NOT NULL DEFAULT ''",
         "description": "TEXT NOT NULL DEFAULT ''",
         "topics": "TEXT NOT NULL DEFAULT ''",
         "watchers": "INTEGER NOT NULL DEFAULT 0",
@@ -279,6 +301,13 @@ def _clean_meta(full_name, meta):
         row["license"] = "" if spdx == "NOASSERTION" else spdx
     else:
         row["license"] = license_obj if isinstance(license_obj, str) else ""
+    parent = meta.get("parent") or meta.get("parent_repo")
+    if isinstance(parent, dict):
+        row["parent"] = (parent.get("full_name") or parent.get("fullName") or "")[:120]
+    elif isinstance(parent, str):
+        row["parent"] = parent[:120]
+    else:
+        row["parent"] = ""
     topics = meta.get("topics")
     if isinstance(topics, (list, tuple)):
         row["topics"] = ";".join(str(t) for t in topics)

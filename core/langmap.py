@@ -392,18 +392,28 @@ def infer_lang(url, name="", description="", repo_language="", topics="",
     return UNKNOWN
 
 
-def _matches(haystack, keyword):
-    """Krótkie słowa kluczowe muszą być całym słowem, dłuższe — frazą."""
-    if " " in keyword:
-        return keyword in haystack
-    if keyword not in haystack:
-        return False
-    return _keyword_re(keyword).search(haystack) is not None
+_WORD_RE = re.compile(r"[\w.+#-]+")
 
 
-@lru_cache(maxsize=4096)
-def _keyword_re(keyword):
-    return re.compile(rf"(?<![\w]){re.escape(keyword)}(?![\w])")
+def matching_groups(haystack, groups):
+    """Nazwy grup, których słowa kluczowe występują w tekście.
+
+    Jedna tokenizacja na całą paczkę słów, potem zwykłeMembership w zbiorze.
+    Słowa kluczowe, które nie są pojedynczym słowem (np. "sql injection"),
+    sprawdzamy zwykłym `in`. Regexy były tu 11× wolniejsze.
+    """
+    words = set(_WORD_RE.findall(haystack))
+    hits = []
+    for name, keywords in groups:
+        for keyword in keywords:
+            if " " in keyword or not keyword.isascii() or "/" in keyword:
+                if keyword in haystack:
+                    hits.append(name)
+                    break
+            elif keyword in words:
+                hits.append(name)
+                break
+    return hits
 
 
 def infer_platform(url="", name="", description="", section="", subsection="", topics=""):
@@ -411,13 +421,7 @@ def infer_platform(url="", name="", description="", section="", subsection="", t
     haystack = " ".join(
         str(x) for x in (url, name, description, section, subsection, topics)
     ).lower()
-    found = []
-    for platform, keywords in PLATFORM_KEYWORDS:
-        for keyword in keywords:
-            if _matches(haystack, keyword):
-                found.append(platform)
-                break
-    return ";".join(found)
+    return ";".join(matching_groups(haystack, PLATFORM_KEYWORDS))
 
 
 def infer_domain(section="", subsection="", topics="", description="", name=""):
@@ -425,10 +429,7 @@ def infer_domain(section="", subsection="", topics="", description="", name=""):
     haystack = " ".join(
         str(x) for x in (section, subsection, topics, description, name)
     ).lower()
-    hits = []
-    for domain, keywords in DOMAIN_KEYWORDS:
-        if any(_matches(haystack, keyword) for keyword in keywords):
-            hits.append(domain)
+    hits = matching_groups(haystack, DOMAIN_KEYWORDS)
     if not hits:
         return UNKNOWN
     return ";".join(hits[:3])
@@ -651,13 +652,7 @@ def looks_like_junk(name, url, description="", identity=None):
         return True
     host = host_of(url)
     if host and not _is_keep_host(host):
-        if any(pattern in host for pattern in BADGE_HOSTS):
-            return True
-        if any(pattern in host for pattern in COMMERCE_HOSTS):
-            return True
-        if any(pattern in host for pattern in PUBLISHER_HOSTS):
-            return True
-        if any(host == social or host.endswith("." + social) for social in SOCIAL_HOSTS):
+        if any(pattern in host for pattern in JUNK_HOST_PATTERNS):
             return True
     clean = clean_name(name)
     low = (clean or str(name)).strip().lower()
@@ -670,6 +665,9 @@ def looks_like_junk(name, url, description="", identity=None):
     if clean.count("|") > 1:
         return True
     return False
+
+
+JUNK_HOST_PATTERNS = BADGE_HOSTS + COMMERCE_HOSTS + PUBLISHER_HOSTS + SOCIAL_HOSTS
 
 
 def _is_keep_host(host):

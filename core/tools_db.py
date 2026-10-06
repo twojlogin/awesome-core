@@ -11,7 +11,7 @@ import threading
 from collections import defaultdict
 from pathlib import Path
 
-from core import aliases, langmap, scoring, store
+from core import aliases, clones, langmap, scoring, store
 
 
 BASE_DIR = Path(__file__).parent.parent
@@ -36,7 +36,8 @@ TOOL_COLUMNS = (
     "id, name, name_norm, url, url_norm, host, description, section, subsection, source_repo,"
     " source_stars, source_language, lang, platform, tags, install_method,"
     " tool_stars, tool_forks, tool_archived, alive, alive_reason, lists_count,"
-    " owners_count, lists_stars, score, underrated, hidden_gem, first_seen"
+    " owners_count, clones_skipped, lists_stars, score, underrated, hidden_gem,"
+    " first_seen"
 )
 
 
@@ -47,6 +48,7 @@ def row_to_tool(row):
     tool["source_stars"] = int(tool.get("source_stars") or 0)
     tool["tool_stars"] = int(tool.get("tool_stars") or 0)
     tool["lists_count"] = int(tool.get("lists_count") or 0)
+    tool["clones_skipped"] = int(tool.get("clones_skipped") or 0)
     tool["owners_count"] = int(tool.get("owners_count") or 0)
     tool["score"] = float(tool.get("score") or 0)
     tool["underrated"] = float(tool.get("underrated") or 0)
@@ -552,6 +554,44 @@ class ToolsDB:
         params.append(int(limit))
         return [row_to_tool(r) for r in self.conn.execute(sql, params)]
 
+    def clones_report(self, min_shared=20, threshold=0.8):
+        return clones.report(self.conn, min_shared=min_shared, threshold=threshold)
+
+    def list_clones(self, full_name):
+        """Kopie treści + forki tej listy (do badge'a na stronie listy)."""
+        out = []
+        for row in self.conn.execute(
+            "SELECT canonical, clone, shared, overlap FROM list_similarity"
+            " WHERE canonical = ? OR clone = ? ORDER BY shared DESC",
+            (full_name, full_name),
+        ):
+            is_clone = row["clone"] == full_name
+            out.append({
+                "kind": "kopia",
+                "direction": "klon" if is_clone else "kanon",
+                "other": row["clone"] if is_clone else row["canonical"],
+                "shared": row["shared"],
+                "overlap": row["overlap"],
+            })
+        for row in self.conn.execute(
+            "SELECT full_name FROM repos WHERE is_fork = 1 AND parent = ?"
+            " ORDER BY unique_tool_count DESC",
+            (full_name,),
+        ):
+            out.append({
+                "kind": "fork", "direction": "fork", "other": row["full_name"],
+                "shared": 0, "overlap": None,
+            })
+        parent = self.conn.execute(
+            "SELECT parent FROM repos WHERE full_name = ?", (full_name,)
+        ).fetchone()
+        if parent and parent["parent"]:
+            out.append({
+                "kind": "fork", "direction": "rodzic", "other": parent["parent"],
+                "shared": 0, "overlap": None,
+            })
+        return out
+
     def explain(self, tool):
         if not tool:
             return None
@@ -572,6 +612,7 @@ class ToolsDB:
         detail = scoring.explain({"score": tool.get("score", 0),
                                   "underrated": tool.get("underrated", 0), "parts": parts})
         detail["mentions"] = self.mentions(tool.get("url_norm", ""))
+        detail["clones_skipped"] = int(tool.get("clones_skipped") or 0)
         return detail
 
     def set_alive(self, url_norm, alive, reason=""):

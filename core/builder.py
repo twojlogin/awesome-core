@@ -6,7 +6,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from core import langmap, parser, scoring, store
+from core import clones as clones_mod, langmap, parser, scoring, store
 
 
 BASE_DIR = Path(__file__).parent.parent
@@ -113,7 +113,8 @@ def _best_mention(existing, candidate):
 
 
 def build(data_dir=None, verbose=True, export=None, export_limit=None,
-          index_file=None, readme_dir=None, vacuum=False):
+          index_file=None, readme_dir=None, vacuum=False,
+          clone_threshold=None, clone_min_shared=None, clone_min_size=None):
     started = time.perf_counter()
     conn = store.connect(data_dir)
     store.build_mode(conn)
@@ -123,6 +124,7 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
     _log(verbose, "Synchronizacja list...")
     sync_repos(conn, verbose, index_file=index_file, readme_dir=readme_root)
 
+    phase = time.perf_counter()
     repos = {r["full_name"]: r for r in store.all_repos(conn)}
     with_readme = 0
     raw_mentions = 0
@@ -173,8 +175,20 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
     _log(
         verbose,
         f"  list z README: {with_readme} | wystąpień: {raw_mentions} | "
-        f"odrzuconych śmieci: {junk_count} | unikalnych narzędzi: {len(best)}",
+        f"odrzuconych śmieci: {junk_count} | unikalnych narzędzi: {len(best)} "
+        f"| parsowanie: {time.perf_counter() - phase:.1f}s",
     )
+
+    clone_rows, clone_of = _detect_clones(
+        all_mentions, repos, clone_threshold, clone_min_shared, clone_min_size
+    )
+    if clone_rows:
+        summary = clones_mod.summarize(clone_rows)
+        _log(
+            verbose,
+            f"  klony list: {summary['pairs']} par, {summary['clones']} list to kopie "
+            f"({summary['same_owner']} w ręku tego samego autora)",
+        )
 
     started_quality = time.perf_counter()
     repo_quality = _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried)
@@ -183,18 +197,21 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
     tool_meta = store.tool_meta_map(conn)
     if tool_meta:
         _log(verbose, f"  metadane narzędzi w bazie: {len(tool_meta)} repozytoriów")
+    phase = time.perf_counter()
     rows, mention_rows = _build_tool_rows(
-        best, all_mentions, repos, repo_quality, carried, tool_meta, verbose
+        best, all_mentions, repos, repo_quality, carried, tool_meta, clone_of, verbose
     )
 
+    _log(verbose, f"  przygotowanie wierszy: {time.perf_counter() - phase:.1f}s")
     now = time.perf_counter()
-    _write(conn, rows, mention_rows, repo_quality, verbose)
+    _write(conn, rows, mention_rows, repo_quality, clone_rows, verbose)
     _log(verbose, f"  zapis do SQLite: {time.perf_counter() - now:.1f}s")
 
     if store.fts_enabled(conn):
+        now = time.perf_counter()
         conn.execute("INSERT INTO tools_fts(tools_fts) VALUES('rebuild')")
         conn.commit()
-        _log(verbose, "  indeks FTS5 przebudowany")
+        _log(verbose, f"  indeks FTS5 przebudowany ({time.perf_counter() - now:.1f}s)")
 
     _update_repo_stats(conn)
     conn.commit()
@@ -203,6 +220,8 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
     store.set_meta(conn, "last_build", summary["built_at"])
     store.set_meta(conn, "last_build_tools", summary["tools"])
     store.set_meta(conn, "last_build_mentions", summary["mentions"])
+    store.set_meta(conn, "clone_pairs", len(clone_rows))
+    store.set_meta(conn, "clone_lists", len({row["clone"] for row in clone_rows}))
     store.set_meta(conn, "lists_without_meta",
                    conn.execute(
                        "SELECT COUNT(*) FROM repos WHERE stars=0 AND language=''"
@@ -224,6 +243,27 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
     store.finish_build(conn, vacuum=vacuum)
     conn.close()
     return summary
+
+
+def _detect_clones(all_mentions, repos, threshold=None, min_shared=None, min_size=None):
+    """Kopie list + mapa {klon: kanon} (używana przy liczeniu consensusu)."""
+    per_list = defaultdict(set)
+    for identity, mentions in all_mentions.items():
+        for mention in mentions:
+            per_list[mention["repo"]].add(identity)
+    meta = {
+        name: {"stars": repo.get("stars", 0), "quality": repo.get("quality", 0.0)}
+        for name, repo in repos.items()
+    }
+    options = {}
+    if threshold is not None:
+        options["threshold"] = threshold
+    if min_shared is not None:
+        options["min_shared"] = min_shared
+    if min_size is not None:
+        options["min_size"] = min_size
+    rows = clones_mod.detect_clones(per_list, meta, **options)
+    return rows, clones_mod.clone_map(rows)
 
 
 def _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried):
@@ -269,28 +309,33 @@ def _tool_meta_for(identity, tool_meta):
     return tool_meta.get(f"{parts[0]}/{parts[1]}".lower())
 
 
-def _build_tool_rows(best, all_mentions, repos, repo_quality, carried, tool_meta, verbose):
+def _build_tool_rows(best, all_mentions, repos, repo_quality, carried, tool_meta,
+                     clone_of, verbose):
     rows = []
     mention_rows = []
     enriched_count = 0
     for identity, primary in best.items():
         meta = _tool_meta_for(identity, tool_meta)
         mentions = all_mentions[identity]
-        owners = set()
         quality_sum = 0.0
         stars_sum = 0
         seen_repos = set()
         for mention in mentions:
             repo = mention["repo"]
-            if repo in seen_repos:
+            if repo in seen_repos or repo in clone_of:
                 continue
             seen_repos.add(repo)
-            owners.add(repo.split("/")[0].lower())
             quality_sum += repo_quality.get(repo, 0.0)
             stars_sum += int(repos.get(repo, {}).get("stars", 0) or 0)
+        for mention in mentions:
+            seen_repos.add(mention["repo"])
 
-        lists_count = len(seen_repos)
-        owners_count = len(owners)
+        independent = [repo for repo in seen_repos if repo not in clone_of]
+        clones_skipped = len(seen_repos) - len(independent)
+        lists_count = len(independent)
+        owners_count = len({
+            repo.split("/")[0].lower() for repo in independent
+        })
         consensus = scoring.consensus(lists_count, owners_count, quality_sum)
         best_quality = max(
             (repo_quality.get(m["repo"], 0.0) for m in mentions), default=0.0
@@ -375,6 +420,7 @@ def _build_tool_rows(best, all_mentions, repos, repo_quality, carried, tool_meta
                 alive_reason,
                 lists_count,
                 owners_count,
+                clones_skipped,
                 stars_sum,
                 scored["score"],
                 scored["underrated"],
@@ -401,9 +447,10 @@ def _build_tool_rows(best, all_mentions, repos, repo_quality, carried, tool_meta
     return rows, mention_rows
 
 
-def _write(conn, rows, mention_rows, repo_quality, verbose):
+def _write(conn, rows, mention_rows, repo_quality, clone_rows, verbose):
     conn.execute("DELETE FROM tools")
     conn.execute("DELETE FROM tool_mentions")
+    _save_clones(conn, clone_rows)
     conn.executemany(
         "UPDATE repos SET quality=? WHERE full_name=?",
         [(value, full_name) for full_name, value in repo_quality.items()],
@@ -417,12 +464,33 @@ def _write(conn, rows, mention_rows, repo_quality, verbose):
         "INSERT INTO tools (name, name_norm, url, url_norm, host, description, section,"
         " subsection, source_repo, source_stars, source_language, lang, platform, tags,"
         " install_method, tool_stars, tool_forks, tool_archived, alive, alive_reason,"
-        " lists_count, owners_count, lists_stars, score, underrated, hidden_gem,"
-        " first_seen)"
-        " VALUES (" + ",".join(["?"] * 27) + ")"
+        " lists_count, owners_count, clones_skipped, lists_stars, score, underrated,"
+        " hidden_gem, first_seen)"
+        " VALUES (" + ",".join(["?"] * 28) + ")"
     )
     for chunk_start in range(0, len(rows), 5000):
         conn.executemany(insert_sql, rows[chunk_start:chunk_start + 5000])
+    conn.commit()
+
+
+def _save_clones(conn, clone_rows):
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    conn.execute("DELETE FROM list_similarity")
+    conn.execute("UPDATE repos SET clone_of=''")
+    conn.executemany(
+        "INSERT OR REPLACE INTO list_similarity (canonical, clone, shared, overlap,"
+        " clone_size, same_owner, via_chain, computed_at) VALUES (?,?,?,?,?,?,?,?)",
+        [
+            (row["canonical"], row["clone"], row["shared"], row["overlap"],
+             row["clone_size"], 1 if row["same_owner"] else 0,
+             1 if row.get("chain") else 0, now)
+            for row in clone_rows
+        ],
+    )
+    conn.executemany(
+        "UPDATE repos SET clone_of=? WHERE full_name=?",
+        [(row["canonical"], row["clone"]) for row in clone_rows],
+    )
     conn.commit()
 
 

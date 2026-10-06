@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Kopie i forki list — Awesome Core{% endblock %}
+{% block content %}
+<div class="breadcrumb"><a href="/">start</a> / <a href="/lists">listy</a> / kopie i forki</div>
+<h2 style="margin-top:0;">Kopie i forki awesome list</h2>
+<p class="muted small">Trzy listy kopiujące jedną to nie trzy niezależne opinie. Wykrywamy
+twarde kopie treści (próg nakładania z prawej) i forki z metadanych GitHuba. Wzmianki z kopii
+zostają w bazie, ale <b>nie liczą się do zgody kuratorów</b> — dlatego `lists_count` znaczy
+tyle, co powinno.</p>
+
+<div class="row" style="margin-bottom:1rem;">
+  <span class="dim small">próg nakładania:</span>
+  {% for value in [0.8, 0.6, 0.4, 0.3] %}
+    <a class="tag" href="?overlap={{ value }}">{{ "%.0f"|format(value * 100) }}%</a>
+  {% endfor %}
+  <span class="dim small">· consensus zawsze liczony z progiem 80%</span>
+</div>
+
+<div class="panel">
+  <table class="data">
+    <tr><th>kopie treści</th><td>{{ report.copy_pairs }} par</td>
+        <td>{{ report.clone_lists }} list uznanych za kopie</td></tr>
+    <tr><th>forki repozytoriów</th><td>{{ report.fork_pairs }}</td>
+        <td>GitHub zna {{ forks_known }} list z informacją o forku</td></tr>
+    {% if report.lists_without_parent %}
+    <tr><th>forki bez rodzica</th><td colspan="2">{{ report.lists_without_parent }}</td></tr>
+    {% endif %}
+  </table>
+</div>
+
+<h2>Kopie treści</h2>
+{% if report.copies %}
+<table class="data">
+  <tr><th>wspólnych</th><th>nakładanie</th><th>klon</th><th>kanon</th></tr>
+  {% for row in report.copies %}
+  <tr>
+    <td>{{ row.shared }}</td>
+    <td class="score">{{ "%.0f"|format(row.overlap * 100) }}%</td>
+    <td><a href="/list/{{ row.clone }}">{{ row.clone }}</a></td>
+    <td><a href="/list/{{ row.canonical }}">{{ row.canonical }}</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">Przy tym progu nie znaleziono kopii.</p>{% endif %}
+
+<h2>Forki list</h2>
+{% if report.forks %}
+<table class="data">
+  <tr><th>rodzic</th><th>fork</th><th>narzędzi</th></tr>
+  {% for row in report.forks %}
+  <tr><td><a href="/list/{{ row.canonical }}">{{ row.canonical }}</a></td>
+      <td><a href="/list/{{ row.clone }}">{{ row.clone }}</a></td>
+      <td>{{ row.tools }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">GitHub nie zgłasza forków wśród tych list. Kopie treści
+   tworzone są jako osobne repozytoria (szablony, wgrania), więc jedynym
+   sygnałem jest porównanie treści powyżej.</p>
+{% endif %}
+{% endblock %}

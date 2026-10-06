@@ -225,6 +225,21 @@ def lists_page():
     )
 
 
+@app.route("/lists/clones")
+def clones_page():
+    tools, _, _ = dbs()
+    threshold = float(request.args.get("overlap", 0.8))
+    report = tools.clones_report(min_shared=_int_arg("min_shared", 20) or 20,
+                                 threshold=threshold)
+    return render_template(
+        "clones.html",
+        report=report, threshold=threshold,
+        forks_known=int(tools.conn.execute(
+            "SELECT COUNT(*) FROM repos WHERE is_fork=1 OR parent != ''"
+        ).fetchone()[0]),
+    )
+
+
 @app.route("/underrated")
 def underrated_page():
     tools, _, _ = dbs()
@@ -259,7 +274,10 @@ def awesome_list(repo):
         flash(f"Lista '{repo}' nie ma narzędzi w bazie", "error")
         return redirect(url_for("lists_page"))
     items = tools.by_source_repo(repo, limit=400)
-    return render_template("list.html", items=items, title=repo, stats=stats)
+    return render_template(
+        "list.html", items=items, title=repo, stats=stats,
+        clones=tools.list_clones(repo),
+    )
 
 
 @app.route("/tool/<path:needle>")
@@ -314,6 +332,7 @@ def repo_detail(name):
         has_readme=bool(text),
         readme_size=path.stat().st_size if path else 0,
         trust=assess_repo(repo),
+        clones=tools.list_clones(name),
         quality=repo.get("quality", 0),
         tool_count=repo.get("unique_tool_count", 0),
         top_tools=tools.by_source_repo(name, limit=12),

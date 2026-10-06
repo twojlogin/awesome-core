@@ -93,8 +93,8 @@ def fetch_batch(pairs, token):
         parts.append(
             f"  r{i}: repository(owner: \"{owner}\", name: \"{name}\") "
             "{ nameWithOwner stargazerCount forkCount isArchived pushedAt createdAt"
-            " primaryLanguage { name } url repositoryTopics(first: 20)"
-            " { nodes { topic { name } } } }"
+            " primaryLanguage { name } url isFork"
+            " repositoryTopics(first: 20) { nodes { topic { name } } } }"
         )
     payload = {"query": BATCHED_QUERY % "\n".join(parts)}
     args = [

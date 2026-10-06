@@ -25,6 +25,10 @@
         <a href="{{ repo.html_url }}" target="_blank" class="tag">GitHub ↗</a>
         <a href="/list/{{ repo.full_name }}" class="tag">narzędzia z tej listy</a>
         <a href="/readme/{{ repo.full_name }}" class="tag">surowy README</a>
+        {% for clone in (clones or [])[:4] %}
+          {% if clone.kind == 'kopia' %}<span class="tag" title="{{ clone.shared }} wspólnych">{{ 'kopia listy' if clone.direction == 'klon' else 'kanon dla' }} {{ clone.other }}</span>
+          {% else %}<a class="tag" href="/list/{{ clone.other }}">{{ 'fork' if clone.direction == 'fork' else 'fork z' }} {{ clone.other }}</a>{% endif %}
+        {% endfor %}
         {% if trust.attention %}<span class="small" style="color:var(--yellow);">⚠ {{ trust.attention|join('; ') }}</span>{% endif %}
     </div>
 </div>

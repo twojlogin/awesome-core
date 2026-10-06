@@ -26,6 +26,7 @@ Wyszukiwanie:
 Listy i fasetki:
   awesome langs | platforms | domains — co jest w bazie
   awesome lists                       — najlepsze listy wg jakości
+awesome clones                      — kopie i forki list (wpływ na ranking)
   awesome list <owner/repo>           — narzędzia z listy
   awesome mentions <url|nazwa>        — w ilu listach jest narzędzie
   awesome why <url|nazwa>             — rozkład rankingu
@@ -201,6 +202,9 @@ def cmd_info(db, repo_db, curator, name):
     print(f"  Lista: {tool.get('source_repo')} ({tool.get('source_stars', 0)}★)")
     print(f"  Własne gwiazdki: {tool.get('tool_stars', 0)}")
     print(f"  W listach: {tool.get('lists_count', 0)} (autorów: {tool.get('owners_count', 0)})")
+    if tool.get("clones_skipped"):
+        print(f"  Pominięto kopie list: {tool['clones_skipped']} "
+              "(nie liczą się do zgody kuratorów)")
     print(f"  Score: {tool.get('score', 0):.1f} | niedoceniane: {tool.get('underrated', 0):.1f}")
     if tool.get("alive") is True:
         print("  Link: żywy")
@@ -593,6 +597,42 @@ def cmd_shortlist(tools_db, args):
         print("  --title \"Moja lista\"")
 
 
+def cmd_clones(tools_db, args):
+    """Kopie i forki awesome list — i co z tego wynika dla rankingu."""
+    overlap = _flag_value(args, "--min-overlap")
+    threshold = float(overlap) if overlap else 0.8
+    report = tools_db.clones_report(
+        min_shared=_flag_int(args, "--min-shared", 20) or 20,
+        threshold=threshold,
+    )
+    print("\nKopie i forki awesome list\n")
+    print(f"  kopie treści (próg {threshold:.0%}): {report['copy_pairs']} par, "
+          f"{report['clone_lists']} list")
+    if threshold < 0.8:
+        print("  (to tylko podgląd — consensus zawsze liczony z progiem 80%)")
+    print(f"  forki repozytoriów:                     {report['fork_pairs']} "
+          f"({report['fork_lists']} list)")
+    if report["lists_without_parent"]:
+        print(f"  forki bez wskazanego rodzica:          {report['lists_without_parent']}")
+
+    if report["copies"]:
+        print("\nKopie treści:")
+        for row in report["copies"][:20]:
+            flag = " (ten sam autor)" if row["same_owner"] else ""
+            print(f"  {row['shared']:>5} wspólnych ({row['overlap']:.0%})  "
+                  f"{row['clone']}  →  {row['canonical']}{flag}")
+
+    if report["forks"]:
+        print("\nForki list (rodzic → fork):")
+        for row in report["forks"][:25]:
+            print(f"  {row['canonical']:<46} → {row['clone']:<44} "
+                  f"{row['tools']} narzędzi")
+
+    print("\nCo to zmienia: wzmianki z kopii i forków są w bazie, ale NIE liczą się")
+    print("do zgody kuratorów (lists_count) — inaczej trzy kopie udawałyby trzy opinie.")
+    print("Sprawdź konkretne narzędzie: ./awesome why <nazwa>")
+
+
 def cmd_status():
     from core import status as status_mod
 
@@ -929,6 +969,9 @@ def main():
     elif cmd in {"shortlist", "moja-lista"}:
         tools_db, _, _ = dbs()
         cmd_shortlist(tools_db, args)
+    elif cmd in {"clones", "kopie"}:
+        tools_db, _, _ = dbs()
+        cmd_clones(tools_db, args)
     elif cmd in {"status", "stan"}:
         cmd_status()
     elif cmd in {"refresh", "odswiez"}:

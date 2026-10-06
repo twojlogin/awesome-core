@@ -36,8 +36,8 @@ query {
 
 FIELD_TMPL = (
     '  r%d: repository(owner: "%s", name: "%s")'
-    " { nameWithOwner stargazerCount forkCount isArchived pushedAt createdAt"
-    " primaryLanguage { name } url description }"
+    " { nameWithOwner stargazerCount forkCount isArchived isFork pushedAt createdAt"
+    " primaryLanguage { name } url description parent { nameWithOwner } }"
 )
 
 
@@ -125,7 +125,9 @@ def _to_meta(data):
     license_obj = data.get("license") or {}
     spdx = license_obj.get("spdx_id") if isinstance(license_obj, dict) else ""
     topics = data.get("topics") or []
+    parent = data.get("parent") or {}
     return {
+        "parent": (parent.get("nameWithOwner") or "") if isinstance(parent, dict) else "",
         "stars": int(data.get("stargazerCount") or data.get("stargazers_count") or 0),
         "forks": int(data.get("forkCount") or data.get("forks_count") or 0),
         "watchers": int(data.get("watchers_count") or 0),
@@ -133,6 +135,7 @@ def _to_meta(data):
         "topics": topics,
         "description": data.get("description") or "",
         "archived": 1 if (data.get("isArchived") or data.get("archived")) else 0,
+        "is_fork": 1 if (data.get("isFork") or data.get("fork")) else 0,
         "created_at": data.get("createdAt") or data.get("created_at") or "",
         "pushed_at": data.get("pushedAt") or data.get("pushed_at") or "",
         "license": {"spdx_id": spdx} if spdx else {},

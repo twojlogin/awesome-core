@@ -4,6 +4,7 @@
 Uruchamiane w CI, więc nie wolno dotykać prawdziwego data/awesome.db.
 """
 
+import json
 import shutil
 import sys
 import tempfile
@@ -14,7 +15,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from core import aliases, langmap, md, parser, scoring  # noqa: E402
+from core import aliases, clones, langmap, md, parser, scoring  # noqa: E402
 from core.builder import build  # noqa: E402
 from core.database import AwesomeDB  # noqa: E402
 from core import status as status_mod  # noqa: E402
@@ -154,6 +155,72 @@ class TestParser(unittest.TestCase):
         self.assertEqual(nmap["section"], "Security Tools")
 
 
+class TestClones(unittest.TestCase):
+    @staticmethod
+    def _lists(count, offset=0, prefix="x"):
+        return {f"{prefix}{offset + i}" for i in range(count)}
+
+    def test_detects_hard_copy(self):
+        rows = clones.detect_clones(
+            {"org/big": self._lists(100), "copy/big": self._lists(95)},
+            {"org/big": {"stars": 10}, "copy/big": {"stars": 5}},
+        )
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["canonical"], "org/big")
+        self.assertEqual(row["clone"], "copy/big")
+        self.assertEqual(row["shared"], 95)
+        self.assertGreaterEqual(row["overlap"], 0.8)
+        self.assertFalse(row["same_owner"])
+
+    def test_ignores_partial_overlap(self):
+        rows = clones.detect_clones(
+            {"org/a": self._lists(100), "org/b": self._lists(40, 80)}
+        )
+        self.assertEqual(rows, [])
+
+    def test_resolves_chain_to_one_canonical(self):
+        rows = clones.detect_clones({
+            "a/x": self._lists(100),
+            "b/y": self._lists(90),
+            "c/z": self._lists(85),
+        })
+        mapping = clones.clone_map(rows)
+        self.assertEqual(mapping["b/y"], "a/x")
+        self.assertEqual(mapping["c/z"], "a/x")
+
+    def test_same_owner_flagged(self):
+        rows = clones.detect_clones({
+            "owner/fork": self._lists(100),
+            "owner/orig": self._lists(96),
+        })
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["same_owner"])
+
+    def test_canonical_prefers_bigger_then_quality(self):
+        rows = clones.detect_clones(
+            {"small/good": self._lists(100), "big/bad": self._lists(99)},
+            {"small/good": {"quality": 0.9}, "big/bad": {"quality": 0.1}},
+        )
+        self.assertEqual(rows[0]["canonical"], "small/good")
+
+    def test_keyword_matching_semantics(self):
+        groups = (("windows", ("windows", "powershell", "ci/cd", "sql injection")),)
+        haystack = "CI/CD pipeline for Windows and SQL Injection checks, powershell too"
+        self.assertEqual(
+            langmap.matching_groups(haystack.lower(), groups), ["windows"]
+        )
+        self.assertEqual(langmap.matching_groups("linux only", groups), [])
+
+    def test_summary(self):
+        rows = clones.detect_clones({
+            "a/x": self._lists(100), "b/y": self._lists(95), "c/z": self._lists(90),
+        })
+        stats = clones.summarize(rows)
+        self.assertEqual(stats["pairs"], 2)
+        self.assertEqual(stats["clones"], 2)
+
+
 class TestMarkdown(unittest.TestCase):
     def test_basic_blocks(self):
         body, toc = md.render("# T\n\ntekst **gruby**\n\n- a\n- b\n")
@@ -282,6 +349,51 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(shortlist.count(), 1)
         self.assertTrue(shortlist.remove(nmap["url_norm"]))
         self.assertEqual(shortlist.count(), 0)
+
+    def test_clones_are_excluded_from_consensus(self):
+        """Dwie kopie tej samej listy = jeden niezależny głos, nie dwa."""
+        clone_db = Path(tempfile.mkdtemp())
+        try:
+            readmes = clone_db / "offline-db" / "data" / "readmes"
+            readmes.mkdir(parents=True)
+            rows = "\n".join(
+                f"- [tool{i}](https://github.com/acme/tool{i}) - narzędzie {i}" + "\n"
+                for i in range(40)
+            )
+            (readmes / "org__original.md").write_text(
+                "# Original\n\n## Tools\n\n" + rows, encoding="utf-8"
+            )
+            (readmes / "copy__translation.md").write_text(
+                "# Translation\n\n## Tools\n\n" + rows, encoding="utf-8"
+            )
+            (clone_db / "offline-db" / "data" / "index.json").write_text(json.dumps({
+                "org/original": {"owner": "org", "name": "original", "stars": 100},
+                "copy/translation": {"owner": "copy", "name": "translation", "stars": 90},
+            }), encoding="utf-8")
+            data_dir = clone_db / "data"
+            data_dir.mkdir()
+            build(
+                data_dir=data_dir, verbose=False,
+                index_file=clone_db / "offline-db" / "data" / "index.json",
+                readme_dir=readmes,
+                clone_threshold=0.8, clone_min_shared=20, clone_min_size=20,
+            )
+            tools = ToolsDB(data_dir)
+            tool = tools.tool_by_name("tool1")
+            self.assertIsNotNone(tool)
+            self.assertEqual(tool["lists_count"], 1)
+            self.assertEqual(tool["clones_skipped"], 1)
+            conn = tools.conn
+            clone = conn.execute(
+                "SELECT clone_of FROM repos WHERE full_name='copy/translation'"
+            ).fetchone()
+            self.assertEqual(clone["clone_of"], "org/original")
+            self.assertEqual(
+                len(tools.mentions(tool["url_norm"])), 2,
+                "wzmianki z kopii muszą zostać w danych",
+            )
+        finally:
+            shutil.rmtree(clone_db, ignore_errors=True)
 
     def test_thread_safety(self):
         """Flask/TUI używają wielu wątków — połączenie musi być per-wątek."""

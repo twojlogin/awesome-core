@@ -40,6 +40,8 @@ REF_IMAGE_RE = re.compile(r"!\[[^\]]*\]\[[^\]]*\]")
 
 
 ANCHOR_REF_RE = re.compile(r"^\s*\[[^\]]+\]:")
+_MD_LINK_INLINE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_ESCAPED_CHAR = re.compile(r"\\([|*_{}\[\]()#+\-.!])")
 
 
 SKIP_SECTIONS = {
@@ -58,16 +60,19 @@ MAX_SECTION_DEPTH = 80
 
 def _strip_markdown(text):
     out = text or ""
-    out = IMAGE_LINK_RE.sub("", out)
-    out = IMAGE_RE.sub("", out)
-    out = REF_IMAGE_RE.sub("", out)
-    out = re.sub(r"\[([^\]]*)\]\([^)]*\)", lambda m: m.group(1), out)
+    if "![" in out:
+        out = IMAGE_LINK_RE.sub("", out)
+        out = IMAGE_RE.sub("", out)
+        out = REF_IMAGE_RE.sub("", out)
+    if "](" in out:
+        out = _MD_LINK_INLINE.sub(lambda m: m.group(1), out)
     out = re.sub(r"\[([^\]]*)\]\[[^\]]*\]", lambda m: m.group(1), out)
     out = out.replace("**", "").replace("__", "").replace("*", "")
     out = out.replace("`", "").replace("~~", "")
     out = HTML_TAG_RE.sub("", out)
     out = out.replace("&nbsp;", " ").replace("&amp;", "&")
-    out = re.sub(r"\\([|*_{}\[\]()#+\-.!])", r"\1", out)
+    if "\\" in out:
+        out = _ESCAPED_CHAR.sub(r"\1", out)
     out = re.sub(r"\s{2,}", " ", out).strip(" \t-–—:|.,;")
     return out.strip()
 
