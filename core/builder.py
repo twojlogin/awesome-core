@@ -226,9 +226,10 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
                    conn.execute(
                        "SELECT COUNT(*) FROM repos WHERE stars=0 AND language=''"
                    ).fetchone()[0])
-    store.set_meta(conn, "tools_without_own_meta",
+    store.set_meta(conn, "github_tools_without_own_meta",
                    conn.execute(
                        "SELECT COUNT(*) FROM tools WHERE tool_stars = 0"
+                       " AND url_norm LIKE 'github.com/%'"
                    ).fetchone()[0])
     if export:
         path = Path(export)

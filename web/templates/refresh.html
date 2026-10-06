@@ -14,7 +14,8 @@ procesów. Każdy krok uruchamiasz klikając i czekasz na wynik. W terminalu to 
         <tr><th>listy</th><td>{{ status.lists or 0 }} z {{ status.lists_total or 0 }} (README: {{ status.readmes or 0 }})</td></tr>
         <tr><th>linki żywe / martwe</th><td>{{ "{:,}".format(status.alive or 0) }} / {{ "{:,}".format(status.dead or 0) }}</td></tr>
         <tr><th>lista bez metadanych</th><td>{{ status.lists_without_meta or 0 }}</td></tr>
-        <tr><th>narzędzia bez własnych gwiazdek/języka</th><td>{{ "{:,}".format(status.tools_without_own_meta or 0) }} (repo_meta: {{ "{:,}".format(status.repo_meta or 0) }})</td></tr>
+        <tr><th>repozytoria GitHub do odpytania</th><td><b>{{ "{:,}".format(status.repos_to_fetch or 0) }}</b> (pozostałe {{ "{:,}".format(status.github_without_own_meta or 0) }} narzędzi bez własnych gwiazdek)</td></tr>
+        <tr><th>linki poza GitHubem</th><td>{{ "{:,}".format(status.nongithub_links or 0) }} <span class="dim">— dokumentacja, artykuły, filmy; gwiazdek nie mają i nie będą miały</span></td></tr>
         <tr><th>ostatni build</th><td>{{ status.last_build or '—' }}{% if status.last_build_age %} <span class="dim">({{ status.last_build_age }})</span>{% endif %}</td></tr>
         <tr><th>ostatni backfill</th><td>{{ status.last_backfill or '—' }}{% if status.last_backfill_age %} <span class="dim">({{ status.last_backfill_age }})</span>{% endif %}</td></tr>
         <tr><th>ostatni enrich</th><td>{{ status.last_enrich or '—' }}{% if status.last_enrich_age %} <span class="dim">({{ status.last_enrich_age }})</span>{% endif %}</td></tr>

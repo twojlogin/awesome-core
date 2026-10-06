@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from core import store
+from core.enrich import missing_repos
 
 
 BASE_DIR = Path(__file__).parent.parent
@@ -36,6 +37,13 @@ def collect(data_dir=None):
     tools_no_meta = conn.execute(
         "SELECT COUNT(*) FROM tools WHERE tool_stars=0"
     ).fetchone()[0]
+    github_no_meta = conn.execute(
+        "SELECT COUNT(*) FROM tools WHERE tool_stars=0 AND url_norm LIKE 'github.com/%'"
+    ).fetchone()[0]
+    nongithub_links = tools_no_meta - github_no_meta
+    # Ile faktycznie jest do zrobienia — nie "narzędzi", tylko repozytoriów:
+    # kilka narzędzi często wskazuje na to samo repo, a 404 już odpytaliśmy.
+    repos_to_fetch = len(missing_repos(conn))
     alive = conn.execute("SELECT COUNT(*) FROM tools WHERE alive=1").fetchone()[0]
     dead = conn.execute("SELECT COUNT(*) FROM tools WHERE alive=0").fetchone()[0]
     repo_meta = conn.execute("SELECT COUNT(*) FROM tool_repo_meta").fetchone()[0]
@@ -90,13 +98,13 @@ def collect(data_dir=None):
             "why": f"{lists_no_meta} list bez gwiazdek/języka",
             "command": "./awesome backfill",
         })
-    if tools_no_meta:
+    if repos_to_fetch:
         steps.append({
             "id": "enrich",
             "label": "Pobrać metadane narzędzi",
-            "why": f"{tools_no_meta} narzędzi bez własnych gwiazdek/języka "
-                   f"(repo_meta: {repo_meta})",
-            "command": "./awesome enrich --limit 20000",
+            "why": f"{repos_to_fetch} repozytoriów GitHub do odpytania "
+                   f"({github_no_meta} narzędzi bez własnych gwiazdek)",
+            "command": "./awesome enrich",
         })
     steps.append({
         "id": "build",
@@ -114,6 +122,9 @@ def collect(data_dir=None):
         "readmes": readmes,
         "lists_without_meta": lists_no_meta,
         "tools_without_own_meta": tools_no_meta,
+        "github_without_own_meta": github_no_meta,
+        "nongithub_links": nongithub_links,
+        "repos_to_fetch": repos_to_fetch,
         "repo_meta": repo_meta,
         "alive": alive,
         "dead": dead,
@@ -148,6 +159,8 @@ def render(status):
         f"  listy:            {status['lists']} z {status['lists_total']} "
         f"(README lokalnie: {status['readmes']})",
         f"  linki:            żywe {status['alive']:,} / martwe {status['dead']:,}",
+        f"  poza GitHubem:    {status['nongithub_links']:,} "
+        "(dokumentacja/artykuły — bez gwiazdek z definicji)",
         f"  baza:             {status['db_size_mb']} MB",
         f"  ostatni build:    {status['last_build'] or '—'}"
         + (f" ({status['last_build_age']})" if status["last_build_age"] else ""),

@@ -556,7 +556,26 @@ class TestDatabase(unittest.TestCase):
             results = list(pool.map(job, range(24)))
         self.assertTrue(all(value >= 0 for value in results))
 
+    def test_status_separates_repos_from_nongithub_links(self):
+        """status nie może mówić 'brak gwiazdek' o artykułach — to kłamstwo,
+        które wygląda jak błąd i psuje decyzję co odświeżać."""
+        from core import status as status_mod
+
+        report = status_mod.collect(self.data_dir)
+        self.assertTrue(report["ready"])
+        self.assertIn("repos_to_fetch", report)
+        self.assertLessEqual(report["repos_to_fetch"], report["github_without_own_meta"])
+        self.assertEqual(
+            report["github_without_own_meta"] + report["nongithub_links"],
+            report["tools_without_own_meta"],
+        )
+        enrich_step = next(s for s in report["steps"] if s["id"] == "enrich")
+        self.assertIn("repozytoriów GitHub", enrich_step["why"])
+        self.assertEqual(enrich_step["command"], "./awesome enrich")
+
     def test_status_reports_gaps(self):
+        from core import status as status_mod
+
         state = status_mod.collect(self.data_dir)
         self.assertTrue(state["ready"])
         self.assertEqual(state["tools"], self.summary["tools"])

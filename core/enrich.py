@@ -325,8 +325,11 @@ def enrich(limit=None, verbose=True, batch_size=BATCH_SIZE, pause=PAUSE,
     store.set_meta(conn, "last_enrich", time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime()))
     store.set_meta(conn, "last_enrich_found", found)
     store.set_meta(conn, "last_enrich_dead", dead)
-    store.set_meta(conn, "tools_without_own_meta",
-                   conn.execute("SELECT COUNT(*) FROM tools WHERE tool_stars = 0").fetchone()[0])
+    github_left = conn.execute(
+        "SELECT COUNT(*) FROM tools WHERE tool_stars = 0 AND url_norm LIKE 'github.com/%'"
+    ).fetchone()[0]
+    store.set_meta(conn, "github_tools_without_own_meta", github_left)
+    store.set_meta(conn, "repos_to_fetch", len(missing_repos(conn)))
     conn.close()
     print(f"Zapisano metadane dla {found} repozytoriów narzędzi "
           f"({dead} nie istnieje).")
