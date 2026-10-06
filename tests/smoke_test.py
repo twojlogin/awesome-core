@@ -410,24 +410,10 @@ class TestCliIsForgiving(unittest.TestCase):
                  "export", "json", "--out", str(target), "--limit", "5"],
                 capture_output=True, text=True, timeout=300, cwd=tmp,
             )
-            self.assertIn("Traceback", done.stderr) and self.fail(done.stderr)
+            self.assertNotIn("Traceback", done.stderr, done.stderr)
             self.assertTrue(target.exists(), "nie zapisano pod podaną ścieżką")
             self.assertFalse((Path(tmp) / "--out").exists(),
                              "powstał plik '--out' zamiast podanej ścieżki")
-
-    def test_export_limit_is_valid_sql(self):
-        """LIMIT przed ORDER BY wywalało się na "near ORDER"."""
-        from core import store
-
-        conn = store.connect(self.data_dir)
-        with tempfile.TemporaryDirectory() as tmp:
-            for fmt, name in (("json", "t.json"), ("csv", "t.csv")):
-                path = Path(tmp) / name
-                count = (store.export_json(conn, path, limit=5) if fmt == "json"
-                         else store.export_csv(conn, path, limit=5))
-                self.assertEqual(count, 5)
-                self.assertTrue(path.exists())
-        conn.close()
 
     def test_help_and_unknown_command_are_clean(self):
         import subprocess
@@ -773,6 +759,20 @@ class TestDatabase(unittest.TestCase):
         enrich_step = next(s for s in report["steps"] if s["id"] == "enrich")
         self.assertIn("repozytoriów GitHub", enrich_step["why"])
         self.assertEqual(enrich_step["command"], "./awesome enrich")
+
+    def test_export_limit_is_valid_sql(self):
+        """LIMIT przed ORDER BY wywalało się na "near ORDER"."""
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        with tempfile.TemporaryDirectory() as tmp:
+            for fmt, name in (("json", "t.json"), ("csv", "t.csv")):
+                path = Path(tmp) / name
+                count = (store.export_json(conn, path, limit=5) if fmt == "json"
+                         else store.export_csv(conn, path, limit=5))
+                self.assertEqual(count, 5)
+                self.assertTrue(path.exists())
+        conn.close()
 
     def test_status_reports_gaps(self):
         state = status_mod.collect(self.data_dir)
