@@ -385,6 +385,6 @@ wysoki score). `./awesome why <nazwa>` pokazuje rozkład punktów.
 * `curses` z biblioteki standardowej — tylko dla TUI
 
 MIT — używaj, zmieniaj, dziel się.
-Autor: [Arkadiusz Słowik](https://github.com/technoporada)
+Autor: **Arek** — [@twojlogin](https://github.com/twojlogin)
 
 </details>
