@@ -26,10 +26,10 @@ Wyszukiwanie:
 Listy i fasetki:
   awesome langs | platforms | domains — co jest w bazie
   awesome lists                       — najlepsze listy wg jakości
-awesome clones                      — kopie i forki list (wpływ na ranking)
-awesome untrusted                   — skan opisów pod kątem prompt injection
-awesome mcp                         — serwer MCP (stdio) dla lokalnych agentów
-awesome mcp --demo                  — pokaż wymianę JSON-RPC
+  awesome clones                      — kopie i forki list (wpływ na ranking)
+  awesome untrusted                   — skan opisów pod kątem prompt injection
+  awesome mcp                         — serwer MCP (stdio) dla lokalnych agentów
+  awesome mcp --demo                  — pokaż wymianę JSON-RPC
   awesome list <owner/repo>           — narzędzia z listy
   awesome mentions <url|nazwa>        — w ilu listach jest narzędzie
   awesome why <url|nazwa>             — rozkład rankingu
@@ -37,12 +37,18 @@ awesome mcp --demo                  — pokaż wymianę JSON-RPC
   awesome gems [--lang X]             — ukryte perełki
   awesome repos <zapytanie>           — szukaj list/repozytoriów
   awesome top [n]                     — top list wg gwiazdek
+  awesome consensus [--limit N]       — narzędzia z największą zgodą kuratorów
+  awesome stats                       — liczby: narzędzia, listy, języki, linki
+  awesome info <url|nazwa>            — dane narzędzia + komenda instalacji
+  awesome watch add|list|check|remove — śledzone repozytoria list (osobne od shortlist)
 
 Zarządzanie danymi:
+  awesome download [topic] [--limit N] — pobierz awesome listy (działa na Windows)
   awesome build                       — przebuduj bazę z README
   awesome enrich [--limit N]          — metadane repozytoriów narzędzi (GitHub)
   awesome backfill [--force]          — metadane brakujących list
   awesome validate [--limit N]        — sprawdź martwe linki
+  awesome install <nazwa>            — git clone narzędzia (uruchamia tylko git)
   awesome export json|csv [ścieżka]  — eksport bazy
 
 Twoja własna lista:
@@ -59,6 +65,8 @@ Inne:
 
 import json
 import subprocess
+import difflib
+import re
 import sys
 import time
 from pathlib import Path
@@ -1165,8 +1173,27 @@ def main():
     elif cmd == "topic" and args:
         cmd_topic(args[0])
     else:
-        print(__doc__)
+        # Bez tego "./awesome serch nmap" wypisywał po cichu całą pomoc i
+        # wychodził z kodem 0, więc literówka była niewykrywalna — ani dla
+        # człowieka, ani dla skryptu. Podpowiedzi biorę z helpa, więc lista
+        # komend ma jedno źródło prawdy.
+        known = sorted(set(re.findall(r"awesome ([a-z_-]+)", __doc__ or "")))
+        if cmd in known:
+            # Komenda jest, ale bez argumentu. Dawniej to wyglądało jak
+            # "nieznana komenda", bo gałąź dispatchera wymagała argumentów.
+            print(f"`awesome {cmd}` potrzebuje argument — np. nazwę narzędzia "
+                  f"albo zapytanie.")
+            print(f"Wszystkie komendy: ./awesome help")
+            return 2
+        print(f"Nieznana komenda: {cmd}")
+        close = difflib.get_close_matches(cmd, known, n=3)
+        if close:
+            print("Czy chodziło o: " + ", ".join(close))
+        print("Wszystkie komendy: ./awesome help")
+        return 2
 
 
 if __name__ == "__main__":
-    main()
+    # sys.exit, nie samo main(): bez tego "Nieznana komenda" zwracało kod 0
+    # i skrypt nie mógł odróżnić literówki od sukcesu.
+    sys.exit(main() or 0)

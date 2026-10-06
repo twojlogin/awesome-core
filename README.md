@@ -205,6 +205,26 @@ jako brakującej pracy.
 
 ---
 
+---
+
+## Co jest w środku (stan z bazy)
+
+<!-- STAN: te liczby muszą zgadzać się z ./awesome status.
+     Pilnuje tego test_docs_numbers_match_database — nie edytuj ręcznie,
+     popraw dane i odśwież. -->
+| | |
+|---|---|
+| narzędzi (unikalne URL) | **186 861** |
+| wzmianek w listach | **215 327** |
+| list (z metadanymi) | **1 032** |
+| języków | **81** |
+| linki żywe / martwe | **100 360 / 9 345** |
+| spoza GitHuba (bez gwiazdek z definicji) | **75 571** |
+| katalog waży | **235 MB** |
+
+Aktualne liczby zawsze sprawdzisz: `./awesome status`. To jest stan z 6 października
+2026 — po `enrich` i pełnym przebudowaniu.
+
 ## Podłącz agenta AI (MCP) — lokalnie, bez kluczy API
 
 Katalog można dać do dyspozycji lokalnemu agentowi (Claude, Cursor, cokolwiek
@@ -393,7 +413,7 @@ cli/awesome_cli.py   # CLI
 cli/tui.py           # TUI (curses)
 web/app.py           # Flask UI
 web/templates/       # szablony Jinja2
-tests/smoke_test.py  # 84 testy (CI)
+tests/smoke_test.py  # 87 testy (CI)
 ```
 
 </details>

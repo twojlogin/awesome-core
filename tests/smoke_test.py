@@ -596,6 +596,134 @@ class TestCliIsForgiving(unittest.TestCase):
             self.assertNotIn("Traceback", done.stderr)
 
 
+class TestDocsAreTruthful(unittest.TestCase):
+    """Liczby w dokumentacji gniją, bo nikt ich nie aktualizuje.
+
+    Historia: README obiecywał "32 testy", gdy było 84, a opis repo na
+    GitHubie "234k tools", gdy jest 186 861. Opis repo to osobna sprawa,
+    bo GitHub nie pozwoli sprawdzić go testem — dlatego tutaj zostaje tylko
+    blok oznaczony komentarzem w README, a reszta dokumentów ma się do niego
+    odwoływać.
+    """
+
+    def _database(self):
+        root = Path(__file__).parent.parent
+        if not (root / "data" / "awesome.db").exists():
+            self.skipTest("brak bazy — statystyki sprawdzisz przez ./awesome status")
+        from core import store
+
+        return store.connect(root / "data", read_only=True)
+
+    def test_readme_numbers_match_database(self):
+        readme = (Path(__file__).parent.parent / "README.md").read_text(
+            encoding="utf-8")
+        if "<!-- STAN:" not in readme:
+            self.fail("README nie ma bloku <!-- STAN: --> — test nie ma czego pilnować")
+        block = readme.split("<!-- STAN:")[1].split("-->")[1]
+        block = block.split("Aktualne liczby")[0]
+
+        def stated(label):
+            for line in block.splitlines():
+                if f"| {label} " in line:
+                    return int(line.split("**")[1].replace(" ", "")
+                               .replace("\u00a0", ""))
+            return None
+
+        conn = self._database()
+        try:
+            tools = conn.execute("SELECT COUNT(*) FROM tools").fetchone()[0]
+            mentions = conn.execute(
+                "SELECT COUNT(*) FROM tool_mentions").fetchone()[0]
+            repos = conn.execute("SELECT COUNT(*) FROM repos").fetchone()[0]
+            langs = conn.execute(
+                "SELECT COUNT(DISTINCT lang) FROM tools WHERE lang != '?'"
+            ).fetchone()[0]
+            alive = conn.execute(
+                "SELECT COUNT(*) FROM tools WHERE alive=1").fetchone()[0]
+            dead = conn.execute(
+                "SELECT COUNT(*) FROM tools WHERE alive=0").fetchone()[0]
+            off_github = conn.execute(
+                "SELECT COUNT(*) FROM tools WHERE tool_stars=0"
+                " AND url_norm NOT LIKE 'github.com/%'").fetchone()[0]
+        finally:
+            conn.close()
+
+        for label, real in (("narzędzi (unikalne URL)", tools),
+                            ("wzmianek w listach", mentions),
+                            ("list (z metadanymi)", repos),
+                            ("języków", langs),
+                            ("spoza GitHuba (bez gwiazdek z definicji)", off_github)):
+            written = stated(label)
+            self.assertIsNotNone(written, f"w README brak wiersza '{label}'")
+            self.assertEqual(
+                written, real,
+                f"README mówi {written} dla '{label}', a baza ma {real}."
+                f" Popraw dane i odśwież blok STAN (albo zrób ./awesome status).")
+        pair = None
+        for line in block.splitlines():
+            if "| linki żywe / martwe " in line:
+                pair = line.split("**")[1].replace(" ", "").replace("\u00a0", "")
+        self.assertEqual(pair, f"{alive}/{dead}",
+                         f"README mówi '{pair}' o linkach, baza ma {alive} żywych "
+                         f"i {dead} martwych")
+
+    def test_documented_commands_are_real(self):
+        """Każde `./awesome X` z dokumentacji musi naprawdę istnieć.
+
+        Sprawdzane behawioralnie (uruchomienie procesu), a nie regexem po
+        kodzie: regex po dispatcherze obracał się w spaghetti i sam
+        zgłaszał komendy, których nie ma. Unknown command wypisuje
+        "Nieznana komenda", więc to jest jednoznaczny sygnał.
+        """
+        import re
+        import subprocess
+
+        root = Path(__file__).parent.parent
+        cli = root / "cli" / "awesome_cli.py"
+        text = "\n".join((root / name).read_text(encoding="utf-8")
+                         for name in ("README.md", "web/templates/help.html"))
+        commands = sorted(set(re.findall(r"\./awesome ([a-z_-]+)", text))
+                          | set(re.findall(r"awesome ([a-z_-]+)", text)))
+        # te wymagają danych albo są interaktywne, więc tylko samo wywołanie
+        # z argumentami niczego tu nie sprawdza
+        skip = {"start", "refresh", "install", "uninstall", "web", "tui",
+                "demo", "validate", "enrich", "build", "download", "untrusted",
+                "ask", "audit", "collection", "fetch", "topic", "check", "add"}
+        self.assertGreater(len(commands), 20)
+        for command in commands:
+            if command in skip:
+                continue
+            done = subprocess.run(
+                [sys.executable, str(cli), command],
+                capture_output=True, text=True, timeout=90, cwd=root,
+            )
+            out = done.stdout + done.stderr
+            self.assertNotIn("Nieznana komenda", out,
+                             f"dokumentacja obiecuje `./awesome {command}`, "
+                             f"a taka komenda nie istnieje")
+            self.assertNotIn("Traceback", out, command)
+
+    def test_test_count_in_docs_is_current(self):
+        """Dokumentacja podaje liczbę testów. Weryfikacja: unittest nie ma
+        importowalnego pakietu tests/, więc liczymy metody test_ wprost —
+        to ta sama liczba, którą wypisuje runner."""
+        import re
+
+        root = Path(__file__).parent.parent
+        source = (root / "tests" / "smoke_test.py").read_text(encoding="utf-8")
+        real = len(re.findall(r"\n    def test_", source))
+        self.assertGreater(real, 50, "policz testów działa?")
+        for name in ("README.md", "AGENTS.md"):
+            text = (root / name).read_text(encoding="utf-8")
+            # Tylko polskie formy i liczba stanowiąca osobny token, inaczej
+            # "Jinja2\ntests/" wygląda jak twierdzenie "2 testy".
+            for claimed in re.findall(r"(?<![\w.])(\d+)\s+test(?:y|ów|ami|e)\b",
+                                       text):
+                self.assertEqual(
+                    int(claimed), real,
+                    f"{name} mówi o {claimed} testach, a suite ma {real}")
+
+
 class TestNoAIinCore(unittest.TestCase):
     """Rdzeń ma być lokalny i przewidywalny. AI wchodzi jednym adapterem.
 

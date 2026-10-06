@@ -5,9 +5,11 @@ i które trzeba egzekwować, inaczej projekt zje sam siebie.
 
 ## Stan rzeczy
 
-Katalog narzędzi z awesome list: 186 861 narzędzi, 1 026 list, 81 języków.
+Katalog narzędzi z awesome list — skala i liczby są w README, sekcja
+„Co jest w środku". **Nie powielaj ich tutaj**: zestarzały się już raz
+(1 026 → 1 032 list) i pilnuje tego test, nie komentarz.
 Baza `data/awesome.db` jest generowana, nigdy nie w repo. Kod: ~8,8k linii
-Pythona, 84 testy, jedna zależność zewnętrzna (flask, tylko web UI).
+Pythona, 87 testy, jedna zależność zewnętrzna (flask, tylko web UI).
 
 Weryfikacja stanu: `./awesome status`. Nic nie działa samo — brak cronów,
 daemonów i procesów w tle.
@@ -31,7 +33,7 @@ oryginału — wyłapał to benchmark na 20 000 iteracji, nie oko. Jeśli piszes
 
 **4. Niepisze się „na oko".** Trzy listy kopiujące jedną to nie trzy
 niezależne opinie. Kopie wykrywane (`core/clones.py`, próg 80%) nie liczą się do
-zgody kuratorów. Dlatego 1 kopia na 1 026 list, ale mechanizm jest potrzebny
+zgody kuratorów. Dlatego 1 kopia na ponad tysiąc list, ale mechanizm jest potrzebny
 na przyszłość.
 
 **5. Zero spaghetti.** Jeden helper zamiast czterech flag. Jeden tryt jest
@@ -51,7 +53,7 @@ znalezione przez użytkownika.
 
 **8. Uczciwe liczby.** Nie zaokrąglamy w górę, nie mieszamy narzędzi
 z repozytoriami, nie nazywamy 3 206 martwych repo „udanymi". `status` mówi
-„repozytoriów do odpytania", nie „narzędzi bez gwiazdek" — bo 75 469 wpisów to
+„repozytoriów do odpytania", nie „narzędzi bez gwiazdek" — bo ponad 75 tys. wpisów to
 artykuły i filmy, których gwiazdek nie da się mieć.
 
 ## Git i tożsamość
@@ -74,7 +76,7 @@ artykuły i filmy, których gwiazdek nie da się mieć.
 ## Jak sprawdzić, czy nie zepsuliśmy
 
 ```bash
-python3 tests/smoke_test.py      # 84 testy, ~35 s
+python3 tests/smoke_test.py      # 87 testy, ~35 s
 python3 -m flake8 --select=E9,F63,F7,F82 --max-line-length=120 core/ cli/ web/ tests/
 ./awesome status                 # stan danych i co ewentualnie odświeżyć
 ./awesome untrusted              # skan opisów pod prompt injection
