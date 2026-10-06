@@ -370,6 +370,77 @@ class TestClones(unittest.TestCase):
         self.assertEqual(stats["clones"], 2)
 
 
+class TestNoAIinCore(unittest.TestCase):
+    """Rdzeń ma być lokalny i przewidywalny. AI wchodzi jednym adapterem.
+
+    Wymóg właściciela projektu: MCP zostaje, ale nie rozsmarowujemy AI po
+    reszcie. Ten test pilnuje tego mechanicznie, bo obietnica w README
+    wyparuje się przy pierwszym refaktorze.
+    """
+
+    FORBIDDEN = {"openai", "anthropic", "google.generativeai", "transformers",
+                 "torch", "tensorflow", "sklearn", "numpy", "requests",
+                 "httpx", "langchain", "llama_index"}
+
+    # Pliki, które z definicji sięgają do sieci — świadomie, na wyraźne
+    # polecenie użytkownika (./awesome download/enrich/validate/install).
+    # validator.py sprawdza czy linki żyją (tylko przy "awesome validate"),
+    # aliases.py potrafi dociągnąć zdalną listę aliasów — oba na wyraźne
+    # polecenie. md.py ma urllib.parse, ale to parsowanie tekstu, nie sieć.
+    NETWORK_OK = {"trust.py", "aliases.py", "curator.py", "enrich.py",
+                  "backfill.py", "mcp.py", "status.py", "builder.py",
+                  "validator.py"}
+
+    def _imports(self, path):
+        """Pełne nazwy modułów ('urllib.request'), bo same korzenie kłamią."""
+        import ast
+
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names.update(a.name for a in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                names.add(node.module)
+        return names
+
+    @staticmethod
+    def _roots(names):
+        return {n.split(".")[0] for n in names}
+
+    def test_core_imports_nothing_heavy(self):
+        core = Path(__file__).parent.parent / "core"
+        for path in sorted(core.glob("*.py")):
+            bad = self._roots(self._imports(path)) & self.FORBIDDEN
+            self.assertEqual(bad, set(),
+                             f"{path.name} importuje {bad} — rdzeń ma zostać stdlib")
+
+    def test_only_declared_files_touch_the_network(self):
+        core = Path(__file__).parent.parent / "core"
+        # Wyraźne moduły sieciowe — samo "urllib" jest niewinne, bo
+        # urllib.parse to parsowanie stringów (core/md.py).
+        net_markers = {"urlopen", "socket", "urllib.request", "http.client",
+                       "httpx", "requests", "subprocess", "aiohttp"}
+        offenders = set()
+        for path in sorted(core.glob("*.py")):
+            if path.name in self.NETWORK_OK:
+                continue
+            if self._imports(path) & net_markers:
+                offenders.add(path.name)
+        self.assertEqual(offenders, set(),
+                         f"te pliki sięgają poza proces bez powodu: {offenders}")
+
+    def test_mcp_is_the_only_ai_adapter(self):
+        core = Path(__file__).parent.parent / "core"
+        self.assertTrue((core / "mcp.py").exists())
+        # żaden inny moduł nie zna pojęcia serwera MCP
+        for path in core.glob("*.py"):
+            if path.name in {"mcp.py", "__init__.py"}:
+                continue
+            self.assertNotIn("jsonrpc", path.read_text(encoding="utf-8").lower(),
+                             f"{path.name} zajmuje się protokołem MCP")
+
+
 class TestUntrusted(unittest.TestCase):
     """Opisy z obcych repo to dane. Nie mogą stać się rozkazami dla modelu."""
 

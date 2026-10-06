@@ -241,6 +241,33 @@ niezawodności. Dlatego traktuj opisy jako dane, a nie polecenia.
 
 ---
 
+## Zasada: rdzeń bez AI
+
+Właściciel projektu dopuścił MCP, ale nie chce sztucznej inteligencji
+wszędzie — szczególnie nie w narzędziu, które miało być lokalne. Zapisuję to,
+bo obietnica bez pilotausu wyparuje się przy pierwszym refaktorze:
+
+| Warstwa | AI? | Sieć? |
+|---|---|---|
+| parser, baza, ranking, kopie, shortlist, TUI, web | **nie** | **nie** — czyste odczyty z `data/awesome.db` |
+| `core/mcp.py` (adapter dla agentów) | tak, poza procesem | nie — JSON-RPC po stdio |
+| `download`, `enrich`, `backfill`, `validate`, `install` | nie | tak, tylko na wyraźne polecenie |
+
+Z tego wynika reszta decyzji:
+
+- **Cała zależność zewnętrzna to `flask`** (web UI). Rdzeń to czysty stdlib.
+- **Zero modeli, embeddingów, sieci neuronowych czy LLM w rankingu.** Sortowanie
+  to jawna arytmetyka (`core/scoring.py`), którą da się wypisać i podważyć.
+- **Ranking nie zależy od usługi firmy trzeciej.** Nikt nie może Ci podsunąć
+  wyników ani zobaczyć, czego szukałeś.
+- **MCP jest adapterem na brzegu**, nie logiki w środku. Możesz go wywalić
+  i nic nie przestanie działać.
+- Test `test_no_ai_in_core` pilnuje tego mechanicznie: rdzeń nie zaimportuje
+  biblioteki AI ani sieciowej modułu bez zgody, a jedynym plikiem znającym
+  protokół MCP jest `core/mcp.py`.
+
+---
+
 ## Czego nie wiem — słowniczek
 
 | Słowo | Co to znaczy |
