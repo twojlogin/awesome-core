@@ -3,6 +3,7 @@
 
 import math
 import random
+import threading
 from collections import defaultdict
 
 from core import store
@@ -11,25 +12,28 @@ from core import store
 class AwesomeDB:
     def __init__(self, data_dir=None):
         self.data_dir = data_dir
-        self._conn = None
+        self._local = threading.local()
         self._repos = None
         self.categories = defaultdict(list)
         self.stats = {}
 
     @property
     def conn(self):
-        if self._conn is None:
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
             if not store.db_ready(self.data_dir):
                 raise RuntimeError(
                     "Brak bazy danych. Zbuduj ją komendą: python3 extract_tools.py"
                 )
-            self._conn = store.connect(self.data_dir, read_only=True)
-        return self._conn
+            conn = store.connect(self.data_dir, read_only=True)
+            self._local.conn = conn
+        return conn
 
     def close(self):
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self._local.conn = None
 
     def load(self):
         self._repos = None

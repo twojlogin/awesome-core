@@ -226,11 +226,8 @@ def cmd_demo(repo_db, tools_db):
         tools_db.search("powershell", limit=3, lang="PowerShell", platform="windows"),
         3, show_url=False,
     )
-    print("\n3) Zgodność kuratorów (consensus):")
-    print_tools(
-        [t for t in tools_db.search("scanner", limit=40) if t["lists_count"] >= 3][:3],
-        3, show_url=False,
-    )
+    print("\n3) Zgodność kuratorów (najwięcej niezależnych list):")
+    print_tools(tools_db.top_consensus(limit=3), 3, show_url=False)
     print("\n4) Niedoceniane perełki:")
     print_tools(tools_db.underrated(limit=3), 3, show_url=False)
     print("\nDalej: ./awesome why <nazwa> | ./awesome langs | ./awesome tui")

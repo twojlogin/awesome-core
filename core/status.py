@@ -64,7 +64,18 @@ def collect(data_dir=None):
             return f"{delta / 3600:.1f} h temu"
         return f"{delta / 86400:.1f} dni temu"
 
+    started = meta.get("enrich_started_at", "")
+    running = bool(started) and started > meta.get("last_enrich", "")
+
     steps = []
+    if running:
+        steps.append({
+            "id": "enrich",
+            "label": "Trwa pobieranie metadanych narzędzi",
+            "why": f"start {started} ({age(started)}), cel "
+                   f"{meta.get('enrich_limit', '?')} repozytoriów",
+            "command": "poczekaj albo przerwij (Ctrl+C) — postęp jest zapisywany",
+        })
     if readmes < lists_total:
         steps.append({
             "id": "download",
@@ -113,6 +124,9 @@ def collect(data_dir=None):
         "last_backfill_age": age(meta.get("last_backfill")),
         "last_enrich": meta.get("last_enrich", ""),
         "last_enrich_age": age(meta.get("last_enrich")),
+        "enrich_running": running,
+        "enrich_started": started,
+        "enrich_limit": meta.get("enrich_limit", ""),
         "db_size_mb": round(path.stat().st_size / 1048576, 1) if path.exists() else 0,
         "steps": steps,
     }
@@ -140,7 +154,8 @@ def render(status):
         f"  ostatni backfill: {status['last_backfill'] or '—'}"
         + (f" ({status['last_backfill_age']})" if status["last_backfill_age"] else ""),
         f"  ostatni enrich:   {status['last_enrich'] or '—'}"
-        + (f" ({status['last_enrich_age']})" if status["last_enrich_age"] else ""),
+        + (f" ({status['last_enrich_age']})" if status["last_enrich_age"] else "")
+        + ("  ← W TRAKCIE" if status.get("enrich_running") else ""),
         "",
         "Do odświeżenia (nic nie działa samo):",
     ]

@@ -7,6 +7,7 @@ web i AI Bibliotekarza), plus fasetki: język, platforma, domena, consensus.
 
 import re
 import sqlite3
+import threading
 from collections import defaultdict
 from pathlib import Path
 
@@ -62,32 +63,36 @@ class ToolsDB:
 
     def __init__(self, data_dir=None):
         self.data_dir = Path(data_dir) if data_dir else BASE_DIR / "data"
-        self._conn = None
+        self._local = threading.local()
         self._fts = None
         self._all = None
 
     @property
     def conn(self):
-        if self._conn is None:
+        """Połączenie per-wątek: Flask obsługuje żądania wieloma wątkami."""
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
             if not store.db_ready(self.data_dir):
                 raise RuntimeError(
                     "Brak bazy danych. Zbuduj ją komendą: python3 extract_tools.py"
                 )
-            self._conn = store.connect(self.data_dir, read_only=True)
-        return self._conn
+            conn = store.connect(self.data_dir, read_only=True)
+            self._local.conn = conn
+        return conn
 
     @property
     def fts(self):
         """FTS5 bywa wyłączone — wtedy spadamy do LIKE po indeksowanych kolumnach."""
         self.conn
         if self._fts is None:
-            self._fts = store.fts_enabled(self._conn)
+            self._fts = store.fts_enabled(self.conn)
         return self._fts
 
     def close(self):
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self._local.conn = None
 
     @property
     def tools(self):
@@ -100,6 +105,26 @@ class ToolsDB:
     def reload(self):
         self._all = None
         self.close()
+
+    def top_consensus(self, limit=20, lang=None, min_stars=0):
+        """Narzędzia wskazane przez najwięcej niezależnych list."""
+        filters = ["lists_count >= 2"]
+        params = []
+        if lang:
+            filters.append("lang = ?")
+            params.append(lang)
+        if min_stars:
+            filters.append("(COALESCE(tool_stars,0) >= ? OR source_stars >= ?)")
+            params.extend([min_stars, min_stars])
+        params.append(int(limit))
+        return [
+            row_to_tool(r)
+            for r in self.conn.execute(
+                f"SELECT {TOOL_COLUMNS} FROM tools WHERE {' AND '.join(filters)}"
+                " ORDER BY lists_count DESC, owners_count DESC, score DESC LIMIT ?",
+                params,
+            )
+        ]
 
     def count(self):
         return self.conn.execute("SELECT COUNT(*) FROM tools").fetchone()[0]
@@ -498,7 +523,7 @@ class ToolsDB:
         ]
 
     def underrated(self, limit=20, lang=None, platform=None):
-        filters = []
+        filters = ["tool_stars > 0"]
         params = []
         if lang:
             filters.append("lang = ?")
@@ -517,10 +542,11 @@ class ToolsDB:
         ]
 
     def gems(self, limit=20, lang=None):
-        sql = f"SELECT {TOOL_COLUMNS} FROM tools"
+        """Ukryte perełki: mało list, ale wysoki score (tylko znane narzędzia)."""
+        sql = f"SELECT {TOOL_COLUMNS} FROM tools WHERE tool_stars > 0"
         params = []
         if lang:
-            sql += " WHERE lang = ?"
+            sql += " AND lang = ?"
             params.append(lang)
         sql += " ORDER BY hidden_gem DESC, score DESC LIMIT ?"
         params.append(int(limit))

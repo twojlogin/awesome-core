@@ -278,6 +278,8 @@ def enrich(limit=None, verbose=True, batch_size=BATCH_SIZE, pause=PAUSE,
         conn.close()
         return 0
 
+    store.set_meta(conn, "enrich_started_at", time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime()))
+    store.set_meta(conn, "enrich_limit", limit or 0)
     size = batch_size if token else 1
     total = len(pairs)
     done = 0

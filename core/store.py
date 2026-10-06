@@ -156,12 +156,15 @@ def connect(data_dir=None, timeout=30.0, read_only=False):
             raise RuntimeError(
                 "Brak bazy danych. Zbuduj ją komendą: python3 extract_tools.py"
             )
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=timeout)
+        conn = sqlite3.connect(
+            f"file:{path}?mode=ro", uri=True, timeout=timeout,
+            check_same_thread=False,
+        )
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout=30000")
         return conn
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), timeout=timeout)
+    conn = sqlite3.connect(str(path), timeout=timeout, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")

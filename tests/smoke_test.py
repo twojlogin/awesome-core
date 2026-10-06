@@ -262,6 +262,19 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(again["tools"], self.summary["tools"])
         self.assertEqual(again["mentions"], self.summary["mentions"])
 
+    def test_thread_safety(self):
+        """Flask/TUI używają wielu wątków — połączenie musi być per-wątek."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        def job(index):
+            if index % 2:
+                return len(self.tools.search("nmap", limit=3))
+            return len(self.tools.by_lang("Python", limit=3)) + len(self.tools.langs(3, 3))
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(job, range(24)))
+        self.assertTrue(all(value >= 0 for value in results))
+
     def test_status_reports_gaps(self):
         state = status_mod.collect(self.data_dir)
         self.assertTrue(state["ready"])
