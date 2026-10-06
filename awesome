@@ -2,4 +2,15 @@
 # awesome — wrapper dla awesome-core CLI
 ACTUAL="$(readlink -f "$0")"
 BASE_DIR="$(dirname "$ACTUAL")"
-exec python3 "$BASE_DIR/cli/awesome_cli.py" "$@"
+# Nie każdy system ma "python3" (na Windowsie i części macOS jest tylko
+# "python"), a szukanie interpreterza po kolei jest krótsze niż instrukcja
+# w README.
+if command -v python3 >/dev/null 2>&1; then
+  PY=python3
+elif command -v python >/dev/null 2>&1; then
+  PY=python
+else
+  echo "Nie widzę Pythona. Zainstaluj Python 3.8+ i spróbuj ponownie." >&2
+  exit 1
+fi
+exec "$PY" "$BASE_DIR/cli/awesome_cli.py" "$@"

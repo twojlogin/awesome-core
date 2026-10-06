@@ -9,7 +9,7 @@ Katalog narzędzi z awesome list — skala i liczby są w README, sekcja
 „Co jest w środku". **Nie powielaj ich tutaj**: zestarzały się już raz
 (1 026 → 1 032 list) i pilnuje tego test, nie komentarz.
 Baza `data/awesome.db` jest generowana, nigdy nie w repo. Kod: ~8,8k linii
-Pythona, 89 testy, jedna zależność zewnętrzna (flask, tylko web UI).
+Pythona, 91 testy, jedna zależność zewnętrzna (flask, tylko web UI).
 
 Weryfikacja stanu: `./awesome status`. Nic nie działa samo — brak cronów,
 daemonów i procesów w tle.
@@ -19,7 +19,10 @@ daemonów i procesów w tle.
 **1. Rdzeń bez AI.** Ranking to jawna arytmetyka w `core/scoring.py` — da się
 ją wypisać i podważyć. Zero modeli, embeddingów, sieci neuronowych, LLM-ów
 w środku. AI wchodzi **jednym adapterem na brzegu**: `core/mcp.py`. Możesz go
-wywalić i nic nie przestanie działać. Pilnuje tego `TestNoAIinCore`.
+wywalić i nic nie przestanie działać. Pilnuje tego `TestNoAIinCore` — sprawdza
+importy bibliotek AI, **nazwy modułów** (bo `core/ai_librarian.py` przetrwał
+samą kontrolę importów) i to, że w rdzeniu nie ma modułu z wyciekiem prywatnej
+ścieżki. Nigdy nie dokładaj do `core/` niczego, co woła model.
 
 **2. Nic z cudzego repo nie jest wykonywane.** README to dane (regex, zero
 `subprocess`/`eval`). `install` = `git clone` (git nie uruchamia kodu zdalnego).
@@ -76,7 +79,7 @@ artykuły i filmy, których gwiazdek nie da się mieć.
 ## Jak sprawdzić, czy nie zepsuliśmy
 
 ```bash
-python3 tests/smoke_test.py      # 89 testy, ~35 s
+python3 tests/smoke_test.py      # 91 testy, ~35 s
 python3 -m flake8 --select=E9,F63,F7,F82 --max-line-length=120 core/ cli/ web/ tests/
 ./awesome status                 # stan danych i co ewentualnie odświeżyć
 ./awesome untrusted              # skan opisów pod prompt injection

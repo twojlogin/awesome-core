@@ -821,6 +821,50 @@ class TestNoAIinCore(unittest.TestCase):
         self.assertEqual(offenders, set(),
                          f"te pliki sięgają poza proces bez powodu: {offenders}")
 
+    def test_core_has_no_ai_named_modules(self):
+        import re
+
+        """Rdzeń nie może zawierać modułu, który nazywa się AI.
+
+        Historia: core/ai_librarian.py ("RAG-lite, LLM tylko rankinguje")
+        importował nieistniejący ai_providers z innego, prywatnego
+        projektu właściciela, a jego komunikat błędu ujawniał bezwzględną
+        ścieżkę z katalogu domowego autora w publicznym repo. Poprzedni
+        test sprawdzał tylko importy bibliotek zewnętrznych i to przepuścił.
+        (Tej ścieżki nie cytuję wprost — pilnuje jej sąsiadni test.)
+        """
+        core = Path(__file__).parent.parent / "core"
+        offenders = sorted(p.name for p in core.glob("*.py")
+                           if re.search(r"(^|_)(ai|llm|gpt|claude|openai|ml)(_|\.)",
+                                        p.name))
+        self.assertEqual(offenders, [],
+                         f"moduły o nazwach sugerujących AI w rdzeniu: {offenders}")
+
+    def test_no_private_paths_in_shipped_code(self):
+        """Publiczne repo nie może zawierać ścieżek z maszyny autora."""
+        import re as _re
+
+        root = Path(__file__).parent.parent
+        pattern = _re.compile(r"(~/[A-Za-z/]{3,}|/home/[a-z0-9]+/|/Users/[a-z]+/)")
+        leaks = []
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.is_dir():
+                continue
+            if any(part in {".git", "data", "offline-db", "venv", "logs"}
+                   for part in path.parts):
+                continue
+            if path.suffix not in {".py", ".md", ".html", ".sh", ".yml", ".txt",
+                                   ".cmd", ""}:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            for number, line in enumerate(text.splitlines(), 1):
+                if pattern.search(line):
+                    leaks.append(f"{path.relative_to(root)}:{number}: {line.strip()[:70]}")
+        self.assertEqual(leaks, [], "prywatne ścieżki w kodzie:\n" + "\n".join(leaks))
+
     def test_mcp_is_the_only_ai_adapter(self):
         core = Path(__file__).parent.parent / "core"
         self.assertTrue((core / "mcp.py").exists())

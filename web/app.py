@@ -5,7 +5,6 @@ import os
 import socket
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 from flask import (
@@ -17,7 +16,6 @@ BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from core import md, status as status_mod, store  # noqa: E402
-from core.ai_librarian import recommend as ai_recommend  # noqa: E402
 from core.curator import ToolCurator  # noqa: E402
 from core.database import AwesomeDB  # noqa: E402
 from core.shortlist import Shortlist  # noqa: E402
@@ -34,13 +32,9 @@ README_DIR = BASE_DIR / "offline-db" / "data" / "readmes"
 INDEX_FILE = BASE_DIR / "offline-db" / "data" / "index.json"
 
 
-AI_CACHE_TTL = 300
 
 
-AI_MIN_INTERVAL = 10
 
-_ai_cache = {}
-_ai_last_request = {}
 _readme_cache = {}
 
 tools_db = None
@@ -600,38 +594,6 @@ def refresh_page():
 @app.route("/rebuild", methods=["POST"])
 def rebuild():
     return run_step("build")
-
-
-@app.route("/api/ai/ask", methods=["GET", "POST"])
-def api_ai_ask():
-    tools, _, _ = dbs()
-    if request.method == "POST":
-        data = request.get_json(silent=True) or {}
-        q = str(data.get("q", "")).strip()
-    else:
-        q = request.args.get("q", "").strip()
-    if not q:
-        return {"error": "parametr 'q' wymagany"}, 400
-    try:
-        limit = max(1, min(_int_arg("limit", 5), 10))
-    except (TypeError, ValueError):
-        limit = 5
-    client = request.remote_addr or "local"
-    cache_key = (q.lower(), limit)
-    now = time.monotonic()
-    cached = _ai_cache.get(cache_key)
-    if cached and now - cached[0] < AI_CACHE_TTL:
-        return cached[1]
-    last = _ai_last_request.get(client, 0)
-    if now - last < AI_MIN_INTERVAL:
-        return {"error": "Za dużo zapytań AI. Spróbuj ponownie za chwilę."}, 429
-    _ai_last_request[client] = now
-    try:
-        result = ai_recommend(tools, q, limit=limit)
-        _ai_cache[cache_key] = (now, result)
-        return result
-    except RuntimeError as exc:
-        return {"error": str(exc)}, 503
 
 
 @app.route("/api/tools")

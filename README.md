@@ -175,12 +175,22 @@ Osobno istnieje `watch` — lista **repozytoriów list**, które chcesz śledzi�
 
 Obie listy są lokalne i żadna nie odpytuje się sama w tle.
 
-### Trzy interfejsy, ten sam katalog
+### TUI — klawisze
+
+```text
+/  szukaj              l  następny język      o  następna platforma
+d  następna domena      s  zmień sortowanie     a  wyczyść filtry
+g  ukryte perełki      u  niedoceniane        Enter  szczegóły
+k  do mojej listy      i  instaluj             ?  pomoc
+q  wyjście
+```
+
+### Cztery interfejsy, ten sam katalog
 
 ```bash
 ./awesome            # terminal — najszybszy do szybkiego szukania
 ./awesome tui        # terminal, ale interaktywnie (strzałki, filtry)
-./awesome web        # przeglądarka (http://localhost:5001)
+./awesome web        # przeglądarka (port wypisuje na ekranie)
 ./awesome help       # wszystkie komendy
 ```
 
@@ -413,7 +423,7 @@ cli/awesome_cli.py   # CLI
 cli/tui.py           # TUI (curses)
 web/app.py           # Flask UI
 web/templates/       # szablony Jinja2
-tests/smoke_test.py  # 89 testy (CI)
+tests/smoke_test.py  # 91 testy (CI)
 ```
 
 </details>
