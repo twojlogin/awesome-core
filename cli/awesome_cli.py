@@ -1,195 +1,262 @@
 #!/usr/bin/env python3
 """
-awesome — CLI do Awesome Tools Manager
-Użycie:
-  awesome search <query> [opcje]  — szukaj narzędzi offline
-  awesome info <tool>             — pokaż szczegóły przed instalacją
-  awesome demo                    — pokaż lokalne demo bez sieci
-  awesome repos <kategoria>       — szukaj repo (awesome lists)
-  awesome list <kategoria>        — lista z kategorii
-  awesome random                  — losowe repo
-  awesome stats                   — statystyki
-  awesome top [n]                 — top repo wg gwiazdek
-  awesome install <tool>          — zainstaluj narzędzie
-  awesome uninstall <tool>        — odinstaluj narzędzie
-  awesome installed               — lista zainstalowanych
-  awesome check                   — sprawdź aktualizacje
-  awesome validate [n]            — waliduj linki GitHub (n=limit)
-  awesome audit <owner/repo>      — sygnały ryzyka (--online opcjonalnie)
-  awesome collection <name>       — pokaż kolekcję
-  awesome collections             — lista kolekcji
-  awesome create <name> <desc>    — utwórz kolekcję
-  awesome add <collection> <tool> — dodaj do kolekcji
-  awesome fetch <owner/repo>      — pobierz README z GitHub
-  awesome topic <topic>           — pobierz listy z topicem
-  awesome rebuild                 — przebuduj indeks
-  awesome ask <pytanie>           — AI Bibliotekarz: pytanie po ludzku -> narzędzia
-  awesome web [port]              — uruchamia Flask
+awesome — CLI Awesome Core: lokalne wyszukiwanie i sortowanie awesome list.
 
-Opcje search:
-  --limit N                       — liczba wyników (domyślnie 20)
-  --min-stars N                   — minimalne gwiazdki listy źródłowej
-  --alive                         — tylko wcześniej zweryfikowane żywe linki
+PIERWSZE URUCHOMIENIE (zacznij tutaj):
+  awesome start                      — robi wszystko za Ciebie i mówi co się dzieje
+  awesome search nmap               — szukaj
+  awesome web                        — przeglądarka
+
+Codziennie:
+  awesome status                    — co jest w bazie i co warto odświeżyć
+  awesome refresh                   — pobierz nowe listy i przebuduj bazę (nic nie działa w tle)
+
+Wyszukiwanie:
+  awesome search <zapytanie>          — szukaj narzędzi offline
+      --limit N                       — liczba wyników (domyślnie 20)
+      --lang <język>                  — filtr języka (python, powershell, go…)
+      --os <platforma>                — filtr platformy (windows, linux, docker…)
+      --domain <domena>               — osint, security, network, devops, ml…
+      --list <owner/repo>             — tylko z jednej listy
+      --min-stars N                   — minimalne gwiazdki
+      --min-consensus N               — minimalna liczba niezależnych list
+      --sort score|stars|consensus|underrated|gem|name
+      --alive                         — tylko sprawdzone, żywe linki
+
+Listy i fasetki:
+  awesome langs | platforms | domains — co jest w bazie
+  awesome lists                       — najlepsze listy wg jakości
+  awesome list <owner/repo>           — narzędzia z listy
+  awesome mentions <url|nazwa>        — w ilu listach jest narzędzie
+  awesome why <url|nazwa>             — rozkład rankingu
+  awesome underrated [--lang X]        — dobre z małych list
+  awesome gems [--lang X]             — ukryte perełki
+  awesome repos <zapytanie>           — szukaj list/repozytoriów
+  awesome top [n]                     — top list wg gwiazdek
+
+Zarządzanie danymi:
+  awesome build                       — przebuduj bazę z README
+  awesome enrich [--limit N]          — metadane repozytoriów narzędzi (GitHub)
+  awesome backfill [--force]          — metadane brakujących list
+  awesome validate [--limit N]        — sprawdź martwe linki
+  awesome export json|csv [ścieżka]  — eksport bazy
+
+Inne:
+  awesome tui                         — interfejs terminalowy (curses)
+  awesome web [port]                  — uruchom Flask
+  awesome demo | stats | info | install | uninstall | installed
+  awesome create|add|collection|collections | audit | watch | fetch | topic | check
 """
 
-import sys
 import json
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from core.database import AwesomeDB
-from core.tools_db import ToolsDB
-from core.curator import ToolCurator
-from core.trust import assess_repo, audit_repo, github_token
-from core.watcher import RepoWatcher
+
+from core.curator import ToolCurator  # noqa: E402
+from core.database import AwesomeDB  # noqa: E402
+from core.tools_db import ToolsDB  # noqa: E402
+from core.trust import assess_repo, audit_repo, github_token  # noqa: E402
+from core.watcher import RepoWatcher  # noqa: E402
+
 
 BASE_DIR = Path(__file__).parent.parent
+
+
 README_DIR = BASE_DIR / "offline-db" / "data" / "readmes"
+
+
 INDEX_FILE = BASE_DIR / "offline-db" / "data" / "index.json"
 
 
-def print_repos(results, limit=10):
-    if not results:
-        print("Brak wyników.")
-        return
-    for i, repo in enumerate(results[:limit], 1):
-        name = repo.get("full_name", "?")
-        stars = repo.get("stars", "?")
-        lang = repo.get("language", "")
-        cats = repo.get("categories", "")
-        url = repo.get("html_url", "")
-        desc = repo.get("description", "")[:60]
-        star_str = f"stars={stars}" if stars else ""
-        lang_str = f" | {lang}" if lang else ""
-        print(f"  {i:2d}. {name}  {star_str}{lang_str}")
-        if desc:
-            print(f"      {desc}")
-        print(f"      {cats} | {url}")
-    if len(results) > limit:
-        print(f"  ... i {len(results) - limit} więcej")
-
-
-def print_tools(results, limit=20):
+def print_tools(results, limit=20, show_url=True):
     if not results:
         print("Brak wyników.")
         return
     for i, tool in enumerate(results[:limit], 1):
-        name = tool.get("name", "?")
-        url = tool.get("url", "")
-        desc = tool.get("description", "")[:60]
-        source = tool.get("source_repo", "")
-        print(f"  {i:2d}. {name}")
-        if desc:
-            print(f"      {desc}")
-        print(f"      {url}")
-        if source:
-            print(f"      from: {source}")
+        lang = tool.get("lang") or "?"
+        lists = tool.get("lists_count", 0)
+        stars = tool.get("tool_stars") or tool.get("source_stars") or 0
+        badge = f"{tool.get('score', 0):.0f} pkt"
+        print(f"  {i:2d}. {tool.get('name', '?')}")
+        print(
+            f"      {lang:<12} list: {lists:<3} gwiazdki: {stars:<7} "
+            f"jakość listy: {badge}"
+        )
+        if tool.get("platform"):
+            print(f"      platforma: {tool['platform']}")
+        if tool.get("description"):
+            print(f"      {tool['description'][:110]}")
+        if show_url and tool.get("url"):
+            print(f"      {tool['url']}")
     if len(results) > limit:
         print(f"  ... i {len(results) - limit} więcej")
 
 
-def cmd_search_tools(tools_db, query, limit=20, min_stars=0, alive_only=False):
-    print(f"\nSzukaj narzędzi: {query}")
-    results = tools_db.search(
-        query, limit=limit, min_stars=min_stars, alive_only=alive_only
+def cmd_langs(db):
+    print("\nJęzyki narzędzi (top 30):")
+    for lang, count in db.langs(min_count=5, limit=30):
+        print(f"  {count:>7}  {lang}")
+
+
+def cmd_platforms(db):
+    print("\nPlatformy:")
+    for name, count in db.platforms(min_count=5, limit=30):
+        print(f"  {count:>7}  {name}")
+
+
+def cmd_domains(db):
+    print("\nDomeny:")
+    for name, count in db.domains(min_count=5, limit=30):
+        print(f"  {count:>7}  {name}")
+
+
+def cmd_lists(db, n=20):
+    print(f"\nNajlepsze listy wg jakości ({n}):")
+    for row in db.best_lists(n=n, min_tools=10):
+        print(
+            f"  {row['quality']:.2f}  {row['stars']:>7}★  "
+            f"{row['unique_tool_count']:>5} narzędzi  {row['full_name']}"
+        )
+
+
+def cmd_list(db, repo_name):
+    stats = db.get_list_stats(repo_name)
+    tools = db.by_source_repo(repo_name, limit=200)
+    if not tools:
+        print(f"\nLista '{repo_name}' nie ma narzędzi w bazie.")
+        return
+    header = f"\n{repo_name}: {len(tools)} narzędzi"
+    if stats:
+        header += f" | jakość {stats.get('quality', 0):.2f} | {stats.get('stars', 0)}★"
+    print(header)
+    print_tools(tools, 40, show_url=False)
+
+
+def cmd_mentions(db, needle):
+    tool = db.get_tool_by_url(needle) or db.tool_by_name(needle)
+    if not tool:
+        print(f"Nie znaleziono narzędzia: {needle}")
+        return
+    mentions = db.mentions(tool["url_norm"])
+    print(f"\n{tool['name']} — {tool['url']}")
+    print(
+        f"  {len(mentions)} list, {tool.get('owners_count', 0)} niezależnych autorów, "
+        f"score {tool.get('score', 0):.1f}, lang {tool.get('lang') or '?'}"
     )
-    print(f"Znaleziono: {len(results)}\n")
-    print_tools(results, limit)
+    for mention in mentions[:40]:
+        print(f"  - {mention['source_repo']:<45} {mention['section']}")
 
 
-def cmd_info(tools_db, repo_db, curator, name):
-    tool = curator.get_tool_by_name(name) or tools_db.get_tool_by_url(name)
+def cmd_why(db, needle):
+    tool = db.get_tool_by_url(needle) or db.tool_by_name(needle)
+    if not tool:
+        print(f"Nie znaleziono narzędzia: {needle}")
+        return
+    detail = db.explain(tool)
+    print(f"\n{tool['name']} — score {detail['score']:.1f}")
+    print(f"  niedoceniane: {detail['underrated']:.1f}")
+    print("  rozkład:")
+    for key, value, weight, points in detail["rows"]:
+        print(f"    {key:<11} {value:>6.2f} × waga {weight:.2f} = {points:>5.1f} pkt")
+    print(f"  listy ({len(detail['mentions'])}):")
+    for mention in detail["mentions"][:10]:
+        print(f"    - {mention['source_repo']}")
+
+
+def cmd_underrated(db, limit=20, lang=None, platform=None):
+    print("\nNiedoceniane (dobra jakość, mało gwiazdek):")
+    print_tools(db.underrated(limit=limit, lang=lang, platform=platform), limit, show_url=False)
+
+
+def cmd_gems(db, limit=20, lang=None):
+    print("\nUkryte perełki:")
+    print_tools(db.gems(limit=limit, lang=lang), limit, show_url=False)
+
+
+def cmd_info(db, repo_db, curator, name):
+    tool = db.get_tool_by_url(name) or db.tool_by_name(name)
     if not tool:
         print(f"Nie znaleziono narzędzia: {name}")
         return
-
-    print(f"\n{tool.get('name', name)}")
-    print(f"  URL: {tool.get('url', '')}")
-    if tool.get("description"):
-        print(f"  Opis: {tool['description']}")
+    print(f"\n{tool['name']}")
+    print(f"  URL: {tool['url']}")
+    print(f"  Opis: {tool.get('description') or '-'}")
+    print(f"  Język: {tool.get('lang') or '?'}")
+    if tool.get("platform"):
+        print(f"  Platforma: {tool['platform']}")
+    if tool.get("domains"):
+        print(f"  Domeny: {tool['tags']}")
     print(f"  Sekcja: {tool.get('section') or 'Other'}")
     if tool.get("subsection"):
         print(f"  Podsekcja: {tool['subsection']}")
-    source = tool.get("source_repo", "")
-    if source:
-        print(f"  Źródło: {source}")
-        print(f"  Gwiazdki listy: {tool.get('source_stars', 0)}")
-        print(f"  Język listy: {tool.get('source_language') or '?'}")
-        repo = repo_db.get_repo(source)
-        if repo:
-            report = assess_repo(repo)
-            print(f"  Sygnały repo: {report['status']}")
-            for item in report["attention"]:
-                print(f"    ! {item}")
+    print(f"  Lista: {tool.get('source_repo')} ({tool.get('source_stars', 0)}★)")
+    print(f"  Własne gwiazdki: {tool.get('tool_stars', 0)}")
+    print(f"  W listach: {tool.get('lists_count', 0)} (autorów: {tool.get('owners_count', 0)})")
+    print(f"  Score: {tool.get('score', 0):.1f} | niedoceniane: {tool.get('underrated', 0):.1f}")
+    if tool.get("alive") is True:
+        print("  Link: żywy")
+    elif tool.get("alive") is False:
+        print(f"  Link: martwy ({tool.get('alive_reason')})")
     method = curator.detect_install_method(tool)
     print(f"  Instalacja: {method or 'brak automatycznej metody'}")
+    repo = repo_db.get_repo(tool.get("source_repo", ""))
+    if repo:
+        report = assess_repo(repo)
+        print(f"  Sygnały listy: {report['status']}")
+        for item in report["attention"]:
+            print(f"    ! {item}")
     print("  Przed instalacją przejrzyj repozytorium i jego instrukcję.")
 
 
-def cmd_demo(db, tools_db):
-    """Show the main offline workflow using the local dataset."""
+def cmd_demo(repo_db, tools_db):
     print("\n=== Awesome Core — demo offline ===")
-    if not tools_db.tools:
-        print("Brak lokalnych danych.")
-        print("Uruchom najpierw: ./download.sh awesome-list && python3 extract_tools.py")
+    stats = tools_db.stats()
+    if not stats["total"]:
+        print("Brak lokalnych danych: ./download.sh awesome-list && python3 extract_tools.py")
         return
-
-    print(f"Lokalne narzędzia: {tools_db.stats['total']}")
-    print(f"Lokalne awesome-listy: {tools_db.stats['lists']}")
-    print("\nPrzykład: wyszukiwanie OSINT")
-    results = tools_db.search("osint", limit=3)
-    print_tools(results, 3)
-
-    print("\nPrzykład: wyszukiwanie z jakością")
-    results = tools_db.search("security", limit=3, min_stars=10)
-    if results:
-        print_tools(results, 3)
-    else:
-        print("Brak wyników z filtrem 10+ gwiazdek.")
-        print("Odzyskana baza nie ma jeszcze metadanych gwiazdek.")
-        print("Po odświeżeniu indeksu online ten filtr zacznie działać.")
-
-    print("\nDalej możesz użyć:")
-    print("  ./awesome info <nazwa>")
-    print("  ./awesome audit <owner/repo>")
-    print("  ./awesome web")
-    if db.repos:
-        print(f"\nRepozytoria w lokalnym indeksie: {len(db.repos)}")
+    print(f"Narzędzia: {stats['total']} | list: {stats['lists']} | języki: {stats['langs']}")
+    print("\n1) Szukanie OSINT:")
+    print_tools(tools_db.search("osint", limit=3), 3, show_url=False)
+    print("\n2) PowerShell pod Windows:")
+    print_tools(
+        tools_db.search("powershell", limit=3, lang="PowerShell", platform="windows"),
+        3, show_url=False,
+    )
+    print("\n3) Zgodność kuratorów (consensus):")
+    print_tools(
+        [t for t in tools_db.search("scanner", limit=40) if t["lists_count"] >= 3][:3],
+        3, show_url=False,
+    )
+    print("\n4) Niedoceniane perełki:")
+    print_tools(tools_db.underrated(limit=3), 3, show_url=False)
+    print("\nDalej: ./awesome why <nazwa> | ./awesome langs | ./awesome tui")
 
 
 def cmd_repos(db, query):
-    print(f"\nSzukaj repo: {query}")
-    results = db.search(query)
+    print(f"\nSzukaj list: {query}")
+    results = db.search(query, limit=20)
     print(f"Znaleziono: {len(results)}\n")
-    repos = [r for r, m in results]
-    print_repos(repos)
-
-
-def cmd_list(db, cat):
-    print(f"\nKategoria: {cat}")
-    results = db.list_category(cat)
-    print(f"Repo: {len(results)}\n")
-    print_repos(results)
+    for i, (repo, _matches) in enumerate(results, 1):
+        print(f"  {i:2d}. {repo['full_name']}  {repo['stars']}★  {repo.get('language') or '?'}")
+        if repo.get("description"):
+            print(f"      {repo['description'][:90]}")
+        print(f"      jakość {repo.get('quality', 0):.2f} | {repo.get('unique_tool_count', 0)} narzędzi")
 
 
 def cmd_random(db):
-    repo = db.random_repo()
-    if repo:
-        print(f"\nLosowe repo:")
-        print(f"  Nazwa: {repo.get('full_name', '?')}")
-        print(f"  Stars: {repo.get('stars', '?')}")
-        print(f"  Language: {repo.get('language', '?')}")
-        print(f"  Kategorie: {repo.get('categories', '')}")
-        print(f"  URL: {repo.get('html_url', '')}")
-    else:
-        print("Brak repo w bazie.")
+    tools = db.random(5)
+    print("\nLosowe narzędzia:")
+    print_tools(tools, 5)
 
 
 def cmd_audit(db, name, online=False):
     repo = db.get_repo(name)
     if not repo and not online:
-        print(f"Nie znaleziono repozytorium: {name}")
+        print(f"Nie znaleziono listy: {name}")
         return
     if online:
         token = github_token()
@@ -205,17 +272,11 @@ def cmd_audit(db, name, online=False):
         report = assess_repo(repo)
     print(f"\nOcena sygnałów: {name}")
     print(f"  Status: {report['status']}")
-    if report["info"]:
-        print("  Informacje:")
-        for item in report["info"]:
-            print(f"    - {item}")
-    if report["attention"]:
-        print("  Warto sprawdzić:")
-        for item in report["attention"]:
-            print(f"    - {item}")
-    if not report["info"] and not report["attention"]:
-        print("  Brak dodatkowych informacji do sprawdzenia.")
-    print("  To są wskazówki, nie ocena złośliwości. Przejrzyj kod i release'y przed instalacją.")
+    for item in report["info"]:
+        print(f"    - {item}")
+    for item in report["attention"]:
+        print(f"    ! {item}")
+    print("  To są wskazówki, nie ocena złośliwości.")
 
 
 def cmd_watch(args):
@@ -230,78 +291,69 @@ def cmd_watch(args):
             watcher.add(name)
             print(f"Dodano do obserwowanych: {name}")
         elif action == "remove" and name:
-            print("Usunięto." if watcher.remove(name) else "Repozytorium nie było obserwowane.")
+            print("Usunięto." if watcher.remove(name) else "Repo nie było obserwowane.")
         elif action == "list":
-            entries = watcher.list()
-            if not entries:
-                print("Brak obserwowanych repozytoriów.")
-                return
-            for entry in entries:
+            for entry in watcher.list() or []:
                 snapshot = entry.get("snapshot") or {}
-                checked = snapshot.get("checked_at", "jeszcze nie sprawdzano")
-                print(f"{entry['repo']} — ostatnie sprawdzenie: {checked}")
+                print(f"{entry['repo']} — {snapshot.get('checked_at', 'jeszcze nie sprawdzano')}")
         elif action == "check" and name:
             token = github_token()
             if not token:
-                print("Brak tokena. Ustaw GITHUB_TOKEN albo zaloguj gh CLI.")
+                print("Brak tokena.")
                 return
             snapshot, changes = watcher.check(name, token)
-            print(f"Sprawdzono {name}: {snapshot['stars']} stars, {snapshot['forks']} forks")
-            if changes:
-                print("Zmiany od poprzedniego sprawdzenia:")
-                for field, change in changes.items():
-                    print(f"  {field}: {change['old']} -> {change['new']}")
-            else:
-                print("Brak zmian od poprzedniego sprawdzenia.")
+            print(f"Sprawdzono {name}: {snapshot['stars']}★, {snapshot['forks']} forków")
+            for field, change in changes.items():
+                print(f"  {field}: {change['old']} -> {change['new']}")
         else:
             print("Użycie: awesome watch add|list|check|remove [owner/repo]")
     except (RuntimeError, ValueError) as exc:
         print(f"Watcher: {exc}")
 
 
-def cmd_stats(db, tools_db, curator):
-    s = db.stats
-    ts = tools_db.stats
-    cs = curator.get_stats()
-    print(f"\nStatystyki:")
-    print(f"  Repo: {s.get('total', 0)}")
-    print(f"  Narzędzia: {ts.get('total', 0)}")
-    print(f"  Kategorie repo: {len(s.get('categories', {}))}")
-    print(f"  Sekcje narzędzi: {len(ts.get('sections', {}))}")
-    print(f"  Kolekcje: {cs.get('collections', 0)}")
-    print(f"  Zainstalowane: {cs.get('installed', 0)}")
-    print(f"\n  Top kategorie repo:")
-    for cat, count in sorted(s.get("categories", {}).items(), key=lambda x: -x[1])[:5]:
-        print(f"    {cat}: {count}")
-    print(f"\n  Top sekcje narzędzi:")
-    for sec, count in sorted(ts.get("sections", {}).items(), key=lambda x: -x[1])[:5]:
-        print(f"    {sec}: {count}")
+def cmd_stats(repo_db, tools_db, curator):
+    stats = tools_db.stats()
+    repo_stats = {"total": len(repo_db.repos)}
+    curator_stats = curator.get_stats()
+    print("\nStatystyki:")
+    print(f"  Listy: {repo_stats.get('total', 0)}")
+    print(f"  Narzędzia: {stats['total']}")
+    print(f"  Wzmianki w listach: {tools_db.conn.execute('SELECT COUNT(*) FROM tool_mentions').fetchone()[0]}")
+    print(f"  Języki: {stats['langs']} | sekcje: {stats['sections']}")
+    print(f"  Z opisem: {stats['with_desc']} ({stats['with_desc'] * 100 // max(1, stats['total'])}%)")
+    print(f"  Linki: żywe {stats['alive']} | martwe {stats['dead']} | nie sprawdzone {stats['unchecked']}")
+    print(f"  Z metadanymi GitHub (prawdziwe gwiazdki/język): {stats['with_meta']}")
+    print(f"  Kolekcje: {curator_stats.get('collections', 0)} | zainstalowane: {curator_stats.get('installed', 0)}")
+    print("\n  Top języki:")
+    for lang, count in tools_db.langs(min_count=50, limit=8):
+        print(f"    {count:>7}  {lang}")
+    print("\n  Top platformy:")
+    for platform, count in tools_db.platforms(min_count=100, limit=6):
+        print(f"    {count:>7}  {platform}")
 
 
-def cmd_top(db, n=10):
-    print(f"\nTop {n} repo (wg gwiazdek):")
-    results = db.top_repos(n, sort_by="stars")
-    print_repos(results, n)
+def cmd_top(repo_db, n=10):
+    print(f"\nTop {n} list wg gwiazdek:")
+    for i, repo in enumerate(repo_db.top_repos(n, sort_by="stars"), 1):
+        print(f"  {i:2d}. {repo['full_name']}  {repo['stars']}★  {repo.get('language') or '?'}")
 
 
 def cmd_install(curator, tool_name):
-    print(f"\nInstaluję: {tool_name}")
     result = curator.install_tool(tool_name)
     if result["status"] == "installed":
-        print(f"  Zainstalowano: {result['path']}")
+        print(f"Zainstalowano: {result['path']}")
     elif result["status"] == "already_installed":
-        print(f"  Już zainstalowane: {result['path']}")
+        print(f"Już zainstalowane: {result['path']}")
     else:
-        print(f"  Błąd: {result['message']}")
+        print(f"Błąd: {result.get('message')}")
 
 
 def cmd_uninstall(curator, tool_name):
-    print(f"\nOdinstalowuję: {tool_name}")
     result = curator.uninstall_tool(tool_name)
     if result["status"] == "uninstalled":
-        print(f"  Odinstalowano.")
+        print("Odinstalowano.")
     else:
-        print(f"  Błąd: {result['message']}")
+        print(f"Błąd: {result.get('message')}")
 
 
 def cmd_installed(curator):
@@ -311,23 +363,7 @@ def cmd_installed(curator):
         return
     print(f"\nZainstalowane ({len(installed)}):")
     for name, info in installed.items():
-        print(f"  {name}")
-        print(f"    {info['path']}")
-        print(f"    {info['method']} | {info.get('installed_at', '')}")
-
-
-def cmd_collection(curator, name):
-    tools = curator.get_collection_tools(name)
-    if not tools:
-        print(f"\nKolekcja '{name}' nie istnieje lub jest pusta.")
-        return
-    coll = curator.collections.get(name, {})
-    print(f"\nKolekcja: {name}")
-    print(f"Opis: {coll.get('description', '')}")
-    print(f"Narzędzia ({len(tools)}):")
-    for i, tool in enumerate(tools, 1):
-        print(f"  {i}. {tool.get('name', '?')}")
-        print(f"     {tool.get('url', '')}")
+        print(f"  {name} — {info['method']} — {info['path']}")
 
 
 def cmd_collections(curator):
@@ -337,186 +373,351 @@ def cmd_collections(curator):
         return
     print(f"\nKolekcje ({len(colls)}):")
     for name, info in colls.items():
-        print(f"  {name} ({info['tool_count']} narzędzi)")
-        print(f"    {info['description']}")
+        print(f"  {name} ({info['tool_count']} narzędzi) — {info['description']}")
 
 
-def cmd_create_collection(curator, name, desc):
-    curator.create_collection(name, desc, [])
-    print(f"\nUtworzono kolekcję: {name}")
-
-
-def cmd_add_to_collection(curator, collection, tool):
-    if curator.add_to_collection(collection, tool):
-        print(f"\nDodano {tool} do {collection}")
-    else:
-        print(f"\nNie znaleziono kolekcji: {collection}")
+def cmd_collection(curator, name):
+    tools = curator.get_collection_tools(name)
+    if not tools:
+        print(f"\nKolekcja '{name}' nie istnieje lub jest pusta.")
+        return
+    coll = curator.collections.get(name, {})
+    print(f"\n{coll.get('description') or name} ({len(tools)}):")
+    print_tools(tools, 100, show_url=False)
 
 
 def cmd_ask(tools_db, question):
-    """AI Bibliotekarz: naturalne pytanie -> rekomendacje z bazy."""
     from core.ai_librarian import recommend
-    print(f"\n🤖 AI Bibliotekarz: {question}")
-    print("Szukam w 234k narzedzi...\n")
+
+    print(f"\nAI Bibliotekarz: {question}")
     try:
-        r = recommend(tools_db, question)
-    except RuntimeError as e:
-        print(f"AI niedostepne: {e}")
-        print("Tip: sprobuj tez 'awesome search <slowo>' (klasyczne szukanie).")
+        result = recommend(tools_db, question)
+    except RuntimeError as exc:
+        print(f"AI niedostępne: {exc}")
         return
-    for i, rec in enumerate(r["recommendations"], 1):
-        t = rec["tool"]
-        print(f"  {i}. {t['name']} ({t.get('source_stars', 0)}*)")
+    for i, rec in enumerate(result["recommendations"], 1):
+        print(f"  {i}. {rec['tool']['name']}")
         print(f"     {rec['why']}")
-        if t.get("url"):
-            print(f"     {t['url']}")
-        print()
-    print(f"[via {r['provider']} | frazy: {', '.join(r['queries_used'][:4])}]")
+    print(f"[via {result['provider']}]")
 
 
 def cmd_web(port=None):
-    sys.path.insert(0, str(Path(__file__).parent.parent / "web"))
-    from app import app, find_free_port
+    sys.path.insert(0, str(BASE_DIR / "web"))
+    from app import app
+
     if port is None:
-        port = find_free_port()
+        port = _free_port()
     print(f"Uruchamiam Flask na http://localhost:{port}")
     app.run(debug=False, port=port)
 
 
-def load_index():
-    if INDEX_FILE.exists():
-        return json.loads(INDEX_FILE.read_text())
-    return {}
+def _free_port(default=5001):
+    import socket
+
+    for candidate in range(default, default + 50):
+        with socket.socket() as sock:
+            if sock.connect_ex(("127.0.0.1", candidate)) != 0:
+                return candidate
+    return default
 
 
-def save_index(idx):
-    INDEX_FILE.write_text(json.dumps(idx, indent=2, ensure_ascii=False))
+def cmd_tui():
+    from cli.tui import run_tui
+
+    run_tui()
 
 
 def cmd_fetch(repo_str):
+    from core import store
+
     if "/" not in repo_str:
         print("Użycie: awesome fetch owner/repo")
         return
-
     owner, name = repo_str.split("/", 1)
     full = f"{owner}/{name}"
-    safe_name = f"{owner}__{name}"
-    readme_file = README_DIR / f"{safe_name}.md"
-
+    readme_file = README_DIR / f"{owner}__{name}.md"
     if readme_file.exists():
         print(f"Już pobrane: {full}")
         return
-
-    print(f"Pobieram: {full}")
-    for branch in ["main", "master"]:
-        raw = f"https://raw.githubusercontent.com/{full}/{branch}/README.md"
+    readme_file.parent.mkdir(parents=True, exist_ok=True)
+    for branch in ("main", "master"):
         result = subprocess.run(
-            ["curl", "-s", "-o", str(readme_file), "-w", "%{http_code}", "-L", raw],
-            capture_output=True, text=True, timeout=30
+            ["curl", "-f", "-s", "-o", str(readme_file), "-w", "%{http_code}", "-L",
+             f"https://raw.githubusercontent.com/{full}/{branch}/README.md"],
+            capture_output=True, text=True, timeout=30,
         )
         if result.stdout.strip() == "200":
-            idx = load_index()
-            idx[full] = {"owner": owner, "name": name, "readme_downloaded": True}
-            save_index(idx)
-            print(f"Pobrano: {full}")
+            index = json.loads(INDEX_FILE.read_text(encoding="utf-8")) if INDEX_FILE.exists() else {}
+            index[full] = {"owner": owner, "name": name, "readme_downloaded": True}
+            INDEX_FILE.write_text(json.dumps(index, indent=2, ensure_ascii=False), encoding="utf-8")
+            conn = store.connect()
+            store.upsert_repo(conn, full, {"readme_downloaded": True})
+            store.mark_readme(conn, full, True)
+            conn.close()
+            print(f"Pobrano: {full} — przebuduj bazę: python3 extract_tools.py")
             return
-
-    if readme_file.exists():
-        readme_file.unlink()
-    print(f"Błąd: Nie znaleziono README dla {full}")
-
-
-def cmd_topic(topic):
-    print(f"Pobieram topic: {topic}")
-    subprocess.run(
-        ["bash", str(BASE_DIR / "download.sh"), topic, "100", "1"],
-        cwd=str(BASE_DIR)
-    )
+        if readme_file.exists():
+            readme_file.unlink()
+    print(f"Błąd: nie znaleziono README dla {full}")
 
 
-def cmd_rebuild():
-    print("Przebudowa tools.json...")
-    subprocess.run(
-        ["python3", str(BASE_DIR / "extract_tools.py")],
-        cwd=str(BASE_DIR),
-        capture_output=True
-    )
-
-    print("Przebudowa indeksu...")
-    subprocess.run(
-        ["python3", "-c", """
-import json
-from collections import defaultdict
-tools = json.load(open('data/tools.json'))
-index = defaultdict(list)
-for i, tool in enumerate(tools):
-    name = tool.get('name', '').lower()
-    desc = tool.get('description', '').lower()
-    text = f'{name} {desc}'
-    words = set()
-    for w in text.split():
-        w = w.strip('.,;:!?()[]{}\"\\' -/')
-        if len(w) >= 2:
-            words.add(w)
-    for w in words:
-        index[w].append(i)
-with open('data/search_index.json', 'w') as f:
-    json.dump(dict(index), f)
-"""],
-        cwd=str(BASE_DIR),
-        capture_output=True
-    )
-
-    print("Gotowe!")
+def cmd_topic(topic, sort="stars", wide=True):
+    """Pobiera listy. --wide = kilka zapytań (limit GitHuba to 1000 wyników)."""
+    args = ["bash", str(BASE_DIR / "download.sh"), topic, "100", "1", "20"]
+    if sort:
+        args.extend(["--sort", sort])
+    if wide:
+        args.append("--wide")
+    print(f"Pobieram topic: {topic}" + (" (kilka zapytań)" if wide else ""))
+    result = subprocess.run(args, cwd=str(BASE_DIR), check=False)
+    if result.returncode != 0:
+        print(f"Zakończone z kodem {result.returncode} — sprawdź `./awesome status`.")
+    print("Gotowe. Następny krok: ./awesome build")
 
 
-def cmd_validate(limit=None):
+def cmd_build(export=None):
+    args = [sys.executable, str(BASE_DIR / "extract_tools.py")]
+    if export:
+        args.extend(["--export", export])
+    return subprocess.run(args, cwd=str(BASE_DIR), check=False).returncode
+
+
+def _flag_int(args, name, default=None):
+    if name not in args:
+        return default
+    index = args.index(name)
+    if index + 1 < len(args):
+        try:
+            return int(args[index + 1])
+        except ValueError:
+            return default
+    return default
+
+
+def cmd_status():
+    from core import status as status_mod
+
+    for line in status_mod.render(status_mod.collect(BASE_DIR / "data")):
+        print(line)
+
+
+REQUIRED_TOOLS = [
+    ("python3", "Python 3.8+ — sam program"),
+    ("gh", "GitHub CLI — pobieranie list (gh auth login)"),
+    ("jq", "jq — obróbka JSON z GitHuba"),
+    ("curl", "curl — pobieranie plików"),
+]
+
+
+START_STEPS = [
+    ("download", "Pobieram awesome listy z GitHuba", "5–15 min (jeśli już masz, szybciej)"),
+    ("build", "Buduję bazę z pobranych plików", "ok. 2 min"),
+    ("backfill", "Uzupełniam gwiazdki i języki list", "ok. 1 min"),
+]
+
+
+def check_requirements():
+    """Zwraca listę problemów (pusta = wszystko OK)."""
+    import shutil
+
+    problems = []
+    for tool, hint in REQUIRED_TOOLS:
+        if not shutil.which(tool):
+            problems.append(f"brakuje '{tool}' — {hint}")
+    if not shutil.which("python3") or sys.version_info < (3, 8):
+        problems.append("za stary Python — potrzebne 3.8 lub nowsze")
+    if shutil.which("gh"):
+        result = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True)
+        if result.returncode != 0:
+            problems.append("gh nie jest zalogowane — wpisz: gh auth login")
+    return problems
+
+
+def cmd_start(args):
+    """Pierwsze uruchomienie: wszystko po kolei, po ludzku."""
+    from core import status as status_mod
+
+    print("=" * 66)
+    print(" Awesome Core — pierwsze uruchomienie")
+    print("=" * 66)
+
+    problems = check_requirements()
+    if problems:
+        print("\nNie mogę jeszcze zacząć, bo brakuje kilku rzeczy:\n")
+        for problem in problems:
+            print(f"  ✗ {problem}")
+        print("\nNa Linuksie zwykle wystarczy:")
+        print("  sudo apt install python3 jq curl    # albo: sudo dnf install python3 jq curl")
+        print("  gh auth login                       # logowanie do GitHuba")
+        print("\nSprawdź potem: gh --version && jq --version && curl --version")
+        return 1
+
+    state = status_mod.collect(BASE_DIR / "data")
+    readmes = state.get("readmes", 0) if state.get("ready") else 0
+    steps = list(START_STEPS)
+    if "--skip-download" in args:
+        steps = [step for step in steps if step[0] != "download"]
+        print(f"\nPominam pobieranie (masz już {readmes} plików README lokalnie).")
+
+    print("\nPlan (nic nie działa w tle, widzisz postęp na każdym kroku):\n")
+    for index, (_key, label, how_long) in enumerate(steps, 1):
+        print(f"  {index}. {label}  [{how_long}]")
+    print("\nZaczynam.\n")
+
+    for index, (key, label, how_long) in enumerate(steps, 1):
+        print("-" * 66)
+        print(f"KROK {index}/{len(steps)}: {label}")
+        print("-" * 66)
+        started = time.perf_counter()
+        if key == "download":
+            cmd_topic(args[0] if args and not args[0].startswith("-") else "awesome-list",
+                      wide="--no-wide" not in args)
+        elif key == "build":
+            cmd_build()
+        elif key == "backfill":
+            cmd_backfill()
+        print(f"\n[✓] Krok {index} skończony w {time.perf_counter() - started:.0f}s\n")
+
+    print("=" * 66)
+    print(" Gotowe. Baza jest zbudowana.")
+    print("=" * 66)
+    for line in status_mod.render(status_mod.collect(BASE_DIR / "data"))[1:8]:
+        print(line)
+    print("\nCo teraz? Spróbuj jednego z tych:\n")
+    print("  ./awesome search \"port scanner\"")
+    print("  ./awesome search osint --os windows --lang PowerShell")
+    print("  ./awesome tui                      # terminal, interaktywnie")
+    print("  ./awesome web                      # przeglądarka")
+    print("\nJeśli chcesz lepsze dane (prawdziwe gwiazdki i języki narzędzi):")
+    print("  ./awesome enrich --limit 40000     # ~35 min, potem ./awesome build")
+    return 0
+
+
+def cmd_refresh(args):
+    """Jedna komenda zamiast tła: download -> backfill -> enrich -> build."""
+    steps = [a for a in args if not a.startswith("-")]
+    limit = _flag_int(args, "--enrich-limit", 40000)
+    dry_run = "--dry-run" in args
+    wanted = set(steps) & {"download", "backfill", "enrich", "build"}
+    plan = {}
+    for name in ("download", "backfill", "enrich", "build"):
+        plan[name] = (name in wanted) or (not wanted and f"--skip-{name}" not in args)
+    print("[*] Odświeżanie bazy — wszystko na żądanie, w tle nic nie działa.")
+    for name, enabled in plan.items():
+        print(f"    {name}: {'tak' if enabled else 'pomijam'}")
+    if dry_run:
+        print("\n(dry-run: nic nie uruchamiam)")
+        return
+    want = plan
+
+    if want["download"]:
+        topic = steps[0] if steps and not steps[0].isdigit() else "awesome-list"
+        print(f"\n=== 1/4 pobieranie list (topic: {topic}) ===")
+        cmd_topic(topic)
+    if want["backfill"]:
+        print("\n=== 2/4 metadane list ===")
+        cmd_backfill()
+    if want["enrich"]:
+        print(f"\n=== 3/4 metadane narzędzi (limit {limit}) ===")
+        cmd_enrich(limit)
+    if want["build"]:
+        print("\n=== 4/4 przebudowa bazy ===")
+        cmd_build()
+    print()
+    cmd_status()
+
+
+def cmd_enrich(limit=None):
+    from core import enrich
+
+    return 0 if enrich.enrich(limit=limit) is not None else 1
+
+
+def cmd_backfill(limit=None, force=False):
+    from core import backfill
+
+    backfill.clean_index()
+    backfill.backfill(limit=limit, force=force)
+
+
+def cmd_validate(limit=None, non_github=False):
     from core.validator import Validator
-    v = Validator()
 
-    if limit:
-        print(f"Waliduję {limit} narzędzi...")
-        report = v.validate_all(limit=limit)
+    report = Validator().validate_all(limit=limit, non_github=non_github)
+    print(f"\nSprawdzono: {report['total_checked']}")
+    print(f"  Żywe: {report['alive']}")
+    print(f"  Martwe: {report['dead']}")
+    print(f"  Niesprawdzone: {report['unknown']}")
+    print(f"  Czas: {report['seconds']}s")
+
+
+def cmd_export(fmt, out=None, limit=None):
+    from core import store
+
+    conn = store.connect()
+    path = Path(out) if out else BASE_DIR / "data" / f"tools.{fmt}"
+    if fmt == "csv":
+        count = store.export_csv(conn, path, limit)
     else:
-        print("Waliduję wszystkie narzędzia...")
-        report = v.validate_all()
-
-    print(f"\nWyniki:")
-    print(f"  Sprawdzono: {report['total_checked']}")
-    print(f"  Żywe: {report['results']['alive']}")
-    print(f"  Martwe: {report['results']['dead']}")
-    print(f"  Rate limited: {report['results']['rate_limited']}")
-    print(f"  Błędy: {report['results']['error']}")
+        count = store.export_json(conn, path, limit)
+    print(f"Zapisano {count} pozycji do {path}")
 
 
-def cmd_check():
-    curator = ToolCurator()
+def cmd_check(curator):
     installed = curator.list_installed()
     if not installed:
         print("Brak zainstalowanych narzędzi.")
         return
-
-    print(f"Sprawdzam {len(installed)} narzędzi...")
     for name, info in installed.items():
         path = Path(info["path"])
         if not path.exists():
             print(f"  {name}: NIE ISTNIEJE")
             continue
-
         if info["method"] == "git":
             result = subprocess.run(
-                ["git", "-C", str(path), "log", "-1", "--format=%H %ai"],
-                capture_output=True, text=True
+                ["git", "-C", str(path), "log", "-1", "--format=%h %ai"],
+                capture_output=True, text=True,
             )
-            if result.returncode == 0:
-                parts = result.stdout.strip().split(" ", 1)
-                commit = parts[0][:8]
-                date = parts[1] if len(parts) > 1 else "?"
-                print(f"  {name}: {commit} ({date})")
-            else:
-                print(f"  {name}: błąd")
+            print(f"  {name}: {result.stdout.strip() or 'brak commitów'}")
         else:
-            print(f"  {name}: {info['method']} (brak weryfikacji)")
+            print(f"  {name}: {info['method']} (bez weryfikacji)")
+
+
+def parse_search_args(args):
+    filters = {"limit": 20, "sort": "score", "min_stars": 0,
+               "min_consensus": 0, "lang": None, "platform": None,
+               "domain": None, "source": None, "alive_only": False}
+    query_parts = []
+    i = 0
+    valued = {"--limit", "--lang", "--os", "--platform", "--domain", "--list",
+              "--min-stars", "--min-consensus", "--sort"}
+    while i < len(args):
+        arg = args[i]
+        if arg == "--alive":
+            filters["alive_only"] = True
+        elif arg in valued and i + 1 < len(args):
+            key, value = arg, args[i + 1]
+            if key == "--limit":
+                filters["limit"] = max(1, int(value))
+            elif key == "--lang":
+                filters["lang"] = value
+            elif key in {"--os", "--platform"}:
+                filters["platform"] = value
+            elif key == "--domain":
+                filters["domain"] = value
+            elif key == "--list":
+                filters["source"] = value
+            elif key == "--min-stars":
+                filters["min_stars"] = int(value)
+            elif key == "--min-consensus":
+                filters["min_consensus"] = int(value)
+            elif key == "--sort":
+                filters["sort"] = value
+            i += 1
+        else:
+            query_parts.append(arg)
+        i += 1
+    return " ".join(query_parts).strip(), filters
 
 
 def main():
@@ -524,92 +725,136 @@ def main():
         print(__doc__)
         return
 
-    db = AwesomeDB()
-    tools_db = ToolsDB()
-    curator = ToolCurator()
     cmd = sys.argv[1]
+    args = sys.argv[2:]
 
-    if cmd == "search" and len(sys.argv) > 2:
-        args = sys.argv[2:]
-        query_parts = []
-        limit = 20
-        min_stars = 0
-        alive_only = False
-        i = 0
-        while i < len(args):
-            if args[i] == "--alive":
-                alive_only = True
-            elif args[i] in {"--limit", "--min-stars"} and i + 1 < len(args):
-                try:
-                    value = max(0, int(args[i + 1]))
-                except ValueError:
-                    print(f"Nieprawidłowa wartość: {args[i + 1]}")
-                    return
-                if args[i] == "--limit":
-                    limit = max(1, value)
-                else:
-                    min_stars = value
-                i += 1
-            else:
-                query_parts.append(args[i])
-            i += 1
-        query = " ".join(query_parts).strip()
+    if cmd == "--help" or cmd == "-h" or cmd == "help":
+        print(__doc__)
+        return
+
+    def dbs():
+        return ToolsDB(), AwesomeDB(), ToolCurator()
+
+    if cmd == "search" and args:
+        query, filters = parse_search_args(args)
         if not query:
-            print("Użycie: awesome search <query> [--limit N] [--min-stars N] [--alive]")
+            print("Użycie: awesome search <zapytanie> [--lang python --os windows]")
             return
-        cmd_search_tools(tools_db, query, limit, min_stars, alive_only)
-    elif cmd == "ask" and len(sys.argv) > 2:
-        question = " ".join(sys.argv[2:])
-        cmd_ask(tools_db, question)
-    elif cmd == "info" and len(sys.argv) > 2:
-        cmd_info(tools_db, db, curator, " ".join(sys.argv[2:]))
+        tools_db, _, _ = dbs()
+        min_consensus = filters.pop("min_consensus", 0)
+        limit = filters.pop("limit")
+        if min_consensus:
+            results = tools_db.search(query, limit=min(limit * 5, 500), **filters)
+            results = [t for t in results if t["lists_count"] >= min_consensus][:limit]
+        else:
+            results = tools_db.search(query, limit=limit, **filters)
+        filters["limit"] = limit
+        print(f"\nSzukaj: {query}")
+        shown = {k: v for k, v in filters.items() if v not in (None, 0, False, "")}
+        if shown:
+            print("Filtry: " + " ".join(f"{k}={v}" for k, v in shown.items()))
+        print(f"Znaleziono: {len(results)}\n")
+        print_tools(results, filters["limit"])
+    elif cmd in {"langs", "platforms", "domains"}:
+        tools_db, _, _ = dbs()
+        {"langs": cmd_langs, "platforms": cmd_platforms, "domains": cmd_domains}[cmd](tools_db)
+    elif cmd == "lists":
+        tools_db, _, _ = dbs()
+        cmd_lists(tools_db, int(args[0]) if args else 20)
+    elif cmd == "list" and args:
+        tools_db, _, _ = dbs()
+        cmd_list(tools_db, args[0])
+    elif cmd in {"mentions", "why"} and args:
+        tools_db, _, _ = dbs()
+        (cmd_mentions if cmd == "mentions" else cmd_why)(tools_db, args[0])
+    elif cmd == "underrated":
+        tools_db, _, _ = dbs()
+        lang = args[args.index("--lang") + 1] if "--lang" in args else None
+        platform = args[args.index("--os") + 1] if "--os" in args else None
+        limit = int(args[args.index("--limit") + 1]) if "--limit" in args else 20
+        cmd_underrated(tools_db, limit=limit, lang=lang, platform=platform)
+    elif cmd == "gems":
+        tools_db, _, _ = dbs()
+        lang = args[args.index("--lang") + 1] if "--lang" in args else None
+        cmd_gems(tools_db, limit=20, lang=lang)
+    elif cmd == "info" and args:
+        tools_db, repo_db, curator = dbs()
+        cmd_info(tools_db, repo_db, curator, args[0])
     elif cmd == "demo":
-        cmd_demo(db, tools_db)
-    elif cmd == "repos" and len(sys.argv) > 2:
-        query = " ".join(sys.argv[2:])
-        cmd_repos(db, query)
-    elif cmd == "list" and len(sys.argv) > 2:
-        cat = sys.argv[2]
-        cmd_list(db, cat)
+        tools_db, repo_db, _ = dbs()
+        cmd_demo(repo_db, tools_db)
+    elif cmd == "repos" and args:
+        _, repo_db, _ = dbs()
+        cmd_repos(repo_db, " ".join(args))
     elif cmd == "random":
-        cmd_random(db)
-    elif cmd == "audit" and len(sys.argv) > 2:
-        cmd_audit(db, sys.argv[2], "--online" in sys.argv[3:])
+        tools_db, _, _ = dbs()
+        cmd_random(tools_db)
+    elif cmd == "audit" and args:
+        _, repo_db, _ = dbs()
+        cmd_audit(repo_db, args[0], online="--online" in args)
     elif cmd == "watch":
-        cmd_watch(sys.argv[2:])
+        cmd_watch(args)
     elif cmd == "stats":
-        cmd_stats(db, tools_db, curator)
+        tools_db, repo_db, curator = dbs()
+        cmd_stats(repo_db, tools_db, curator)
     elif cmd == "top":
-        n = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-        cmd_top(db, n)
-    elif cmd == "install" and len(sys.argv) > 2:
-        cmd_install(curator, sys.argv[2])
-    elif cmd == "uninstall" and len(sys.argv) > 2:
-        cmd_uninstall(curator, sys.argv[2])
+        _, repo_db, _ = dbs()
+        cmd_top(repo_db, int(args[0]) if args else 10)
+    elif cmd == "install" and args:
+        _, _, curator = dbs()
+        cmd_install(curator, args[0])
+    elif cmd == "uninstall" and args:
+        _, _, curator = dbs()
+        cmd_uninstall(curator, args[0])
     elif cmd == "installed":
+        _, _, curator = dbs()
         cmd_installed(curator)
-    elif cmd == "collection" and len(sys.argv) > 2:
-        cmd_collection(curator, sys.argv[2])
     elif cmd == "collections":
+        _, _, curator = dbs()
         cmd_collections(curator)
-    elif cmd == "create" and len(sys.argv) > 3:
-        cmd_create_collection(curator, sys.argv[2], " ".join(sys.argv[3:]))
-    elif cmd == "add" and len(sys.argv) > 3:
-        cmd_add_to_collection(curator, sys.argv[2], sys.argv[3])
-    elif cmd == "fetch" and len(sys.argv) > 2:
-        cmd_fetch(sys.argv[2])
-    elif cmd == "topic" and len(sys.argv) > 2:
-        cmd_topic(sys.argv[2])
-    elif cmd == "rebuild":
-        cmd_rebuild()
-    elif cmd == "check":
-        cmd_check()
+    elif cmd == "collection" and args:
+        _, _, curator = dbs()
+        cmd_collection(curator, args[0])
+    elif cmd == "create" and len(args) >= 2:
+        _, _, curator = dbs()
+        curator.create_collection(args[0], " ".join(args[1:]), [])
+        print(f"Utworzono kolekcję: {args[0]}")
+    elif cmd == "add" and len(args) >= 3:
+        _, _, curator = dbs()
+        print("Dodano." if curator.add_to_collection(args[0], args[1]) else "Brak kolekcji.")
+    elif cmd == "ask" and args:
+        tools_db, _, _ = dbs()
+        cmd_ask(tools_db, " ".join(args))
+    elif cmd in {"start", "start-here", "pierwszy-raz"}:
+        sys.exit(cmd_start(args) or 0)
+    elif cmd in {"status", "stan"}:
+        cmd_status()
+    elif cmd in {"refresh", "odswiez"}:
+        cmd_refresh(args)
+    elif cmd in {"build", "rebuild"}:
+        sys.exit(cmd_build())
+    elif cmd == "enrich":
+        cmd_enrich(_flag_int(args, "--limit"))
+    elif cmd == "backfill":
+        cmd_backfill(_flag_int(args, "--limit"), force="--force" in args)
     elif cmd == "validate":
-        limit = int(sys.argv[2]) if len(sys.argv) > 2 else None
-        cmd_validate(limit)
+        cmd_validate(
+            int(args[args.index("--limit") + 1]) if "--limit" in args else None,
+            non_github="--non-github" in args,
+        )
+    elif cmd == "export" and args:
+        cmd_export(args[0], args[1] if len(args) > 1 else None)
+    elif cmd == "check":
+        _, _, curator = dbs()
+        cmd_check(curator)
+    elif cmd == "tui":
+        cmd_tui()
     elif cmd == "web":
-        port = int(sys.argv[2]) if len(sys.argv) > 2 else None
-        cmd_web(port)
+        cmd_web(int(args[0]) if args else None)
+    elif cmd == "fetch" and args:
+        cmd_fetch(args[0])
+    elif cmd == "topic" and args:
+        cmd_topic(args[0])
     else:
         print(__doc__)
 
