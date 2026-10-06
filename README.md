@@ -1,266 +1,224 @@
 # 🔥 Awesome Core
 
-**Offline tool manager — 234k+ tools from 2,047 awesome lists. CLI / TUI / Web.**
+## Czym to jest, w jednym zdaniu
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)]()
-[![Tools](https://img.shields.io/badge/tools-234k+-brightgreen.svg)]()
-[![Repos](https://img.shields.io/badge/repos-2k+-orange.svg)]()
+**Ściąga wszystkie awesome listy z GitHuba do jednego katalogu na Twoim dysku
+i pozwala szybko znaleźć narzędzie — po nazwie, języku, systemie albo temacie —
+całkowicie bez internetu.**
 
-> **Keywords:** `awesome-lists` `tool-manager` `cli` `tui` `web-ui` `offline` `search-engine` `python` `open-source`
+Na przykład chcesz „coś do OSINT na Windowsa w PowerShellu". Wpisujesz:
+
+```bash
+./awesome search osint --os windows --lang PowerShell
+```
+
+i dostajesz listę narzędzi z kilku różnych awesome list naraz, posortowaną tak,
+że na górze są te, które **niezależni kuratorzy wskazali w wielu listach**
+(a nie tylko te z jednej głośnej listy).
 
 ---
 
-## What is it?
-
-Awesome Core is a local database of every tool from every awesome list on GitHub. Search 234k tools in <20ms. Install with one command. Build your own collections. All offline after first download.
-
-## Quick Start
+## Jeśli nie masz czasu — trzy komendy
 
 ```bash
-# 1. Clone
-git clone https://github.com/technoporada/awesome-core.git
-cd awesome-core
-
-# 2. Install
-pip install -r requirements.txt
-
-# 3. Download data (first run)
-./download.sh awesome-list
-
-# 4. Extract tools and build the local search index
-python3 extract_tools.py
-
-# 5. Search!
-./awesome search vpn
-./awesome search osint
-./awesome search docker
+./awesome start      # 1. wszystko robi za Ciebie (pobiera, buduje, gotowe)
+./awesome search nmap
+./awesome web        # i otwiera przeglądarkę
 ```
 
-To see the project without learning the commands first:
+`./awesome start` mówi w każdym kroku, co robi i ile to potrwa. Nic działa się
+samo w tle — zawsze widzisz postęp.
+
+---
+
+## Co musisz mieć zanim zaczniesz
+
+Trzy rzeczy, wszystkie darmowe:
+
+| Potrzebujesz | Po co | Sprawdzenie |
+|---|---|---|
+| **Python 3.8+** | program | `python3 --version` |
+| **gh** (GitHub CLI) | pobieranie list i metadanych (logujesz się raz) | `gh --version` |
+| **jq** i **curl** | pomocnicze narzędzia do pobierania | `jq --version && curl --version` |
+
+Instalacja na Linuksie:
 
 ```bash
-./awesome demo
+sudo apt install python3 jq curl        # albo: sudo dnf install python3 jq curl
+gh auth login                          # zaloguj się do GitHuba (jednorazowo)
 ```
 
-The demo uses only the local dataset and never calls GitHub or an AI provider.
-
-### OSINT / security quick start
-
-Awesome Core is especially useful as a local catalogue for reconnaissance and
-security tooling:
+Reszta (Flask do web UI) instaluje się sama:
 
 ```bash
-./awesome search osint
-./awesome search reconnaissance
-./awesome search subdomain
-./awesome search port scanner
-./awesome collections
+python3 -m venv venv && source venv/bin/activate
+pip install flask
 ```
 
-Review a tool's repository before installing it. Git installation is limited
-to repositories hosted on GitHub, GitLab, or Bitbucket.
+**Nie musisz** znać SQL, programować, nic konfigurować w środku i **nie musisz**
+nic aktualizować automatycznie. Jak coś nie działa — `./awesome status` powie
+Ci, co dokładnie odpalić.
 
-Offline search accepts the same quality filters as the web interface:
+---
+
+## Pierwsze uruchomienie, krok po kroku
+
+### `./awesome start`
+
+Program sprawdza, czy masz wszystko, potem:
+
+| Krok | Co robi | Ile trwa |
+|---|---|---|
+| 1 | pobiera README awesome list z GitHuba (pomija to, co już masz) | 5–15 min |
+| 2 | wyciąga z nich narzędzia do bazy | ~2 min |
+| 3 | dociąga gwiazdki i języki list | ~1 min |
+| 4 | gotowe | — |
+
+Jeśli masz mało czasu, krok 1 możesz pominąć i nadrobić później:
 
 ```bash
-./awesome search osint --limit 20
-./awesome search reconnaissance --min-stars 100
-./awesome search subdomain --alive
-./awesome audit jivoi/awesome-osint
+./awesome start --skip-download     # szybka ścieżka: buduje z tego, co już jest
 ```
 
-You can also keep a small local watch list. It never polls in the background:
-only `watch check` makes one explicit GitHub API request and stores a snapshot
-without the token:
+### Codzienne użycie
 
 ```bash
-./awesome watch add owner/repo
-./awesome watch list
-./awesome watch check owner/repo
-./awesome watch remove owner/repo
+./awesome search "port scanner"                    # szukaj po ludzku
+./awesome search osint --lang Python              # ...tylko Python
+./awesome search "active directory" --os windows  # ...tylko pod Windowsa
+./awesome langs                                    # co jest w bazie (języki)
+./awesome platforms                                # systemy: Windows, Linux, Docker...
+./awesome domains                                  # tematy: osint, security, network...
+./awesome why nmap                                 # skąd ten wynik — punkt po punkcie
+./awesome mentions nmap                            # w ilu listach jest to narzędzie
+./awesome lists                                    # najlepsze listy
+./awesome info nmap                                # dane + komenda instalacji
+./awesome install nmap                             # zainstaluj (git clone)
 ```
 
-For one repository, users with their own GitHub API access can request an
-optional online audit. The token is read from `GITHUB_TOKEN` or `gh auth token`
-and is never stored:
+### Trzy interfejsy, ten sam katalog
 
 ```bash
-GITHUB_TOKEN=... ./awesome audit owner/repo --online
-```
-
-Repository metadata can show neutral maintenance information (for example,
-that a project is archived or has not changed recently) and separate signals
-worth checking manually. An old project may still be a valuable gem; these
-signals do not label a project as safe or malicious.
-
-The normal workflow is offline after the initial download:
-
-```text
-online:  download.sh -> README files + repository metadata
-local:   extract_tools.py -> tools.json + search_index.json
-offline: awesome CLI / TUI / Web -> search, read, filter, collect, install
-```
-
-In the Web UI, a tool page shows the install command with a copy button and a
-controlled local install action. It is not an arbitrary shell terminal: only
-the supported Awesome Core install operation can be triggered from the page.
-The `/installed` page lists local installations and provides controlled
-uninstall actions.
-Tool pages can also expand the locally cached README of the awesome-list that
-provided the tool, so browsing the catalogue does not require a network call.
-The Web UI footer includes a small coffee easter egg; it does not collect
-payments or send data anywhere.
-
-## Features
-
-| Feature | Description |
-|---------|-------------|
-| **234,349 tools** | From 2,047 awesome lists on GitHub |
-| **2,285 repos** | With stars, forks, languages, categories |
-| **<20ms search** | Inverted index, fuzzy matching |
-| **Install tools** | `git clone`, `pip install`, `npm install` |
-| **Collections** | Build your own curated tool lists |
-| **Data pipeline** | Download, enrich, filter and sort awesome lists locally |
-| **Web UI** | Beautiful Flask dashboard |
-| **CLI** | Full terminal interface |
-| **TUI** | Curses-based terminal UI |
-| **Offline** | Zero API calls after download |
-
-## CLI Reference
-
-```bash
-# Tools
-awesome search <query>           # offline search
-awesome search <query> --min-stars 100
-awesome search <query> --limit 50
-awesome install <tool>           # install (git clone)
-awesome uninstall <tool>         # uninstall
-awesome installed                # list installed
-
-# Repos
-awesome repos <query>            # search repos (2,285)
-awesome list <category>          # list by category
-awesome top [n]                  # top by stars
-awesome random                   # random repo
-
-# Download
-awesome fetch owner/repo         # download README
-awesome topic <topic>            # download lists by topic
-awesome rebuild                  # rebuild search index
-
-# Collections
-awesome create <name> <desc>     # create collection
-awesome add <collection> <tool>  # add to collection
-awesome collections              # list collections
-awesome collection <name>        # show collection
-
-# Web
-awesome web [port]               # launch Flask UI
-```
-
-## Web UI
-
-```bash
-python3 web/app.py              # auto-port
-python3 web/app.py 8888         # specific port
-```
-
-The core workflow does not require an AI provider or API tokens. The optional
-AI endpoint is rate-limited and caches identical questions for five minutes.
-Set `AWESOME_SECRET_KEY` in the environment when persistent Flask sessions are
-needed.
-
-| Route | Description |
-|-------|-------------|
-| `/` | Home — 234k tools, top lists |
-| `/search?q=vpn` | Search tools |
-| `/section/Security` | Tools by section |
-| `/list/avelino/awesome-go` | Tools from specific list |
-| `/random` | Random 20 tools |
-| `/add` | Add repo / topic / rebuild |
-
-## Architecture
-
-```
-awesome-core/
-├── core/
-│   ├── database.py          # AwesomeDB — repo search, categories
-│   ├── tools_db.py          # ToolsDB — 234k tools, search index
-│   ├── curator.py           # ToolCurator — install, collections
-│   ├── ai_librarian.py      # AI recommendations
-│   └── validator.py         # Link validation
-├── cli/
-│   └── awesome_cli.py       # CLI interface
-├── web/
-│   ├── app.py               # Flask: routes, search, API
-│   └── templates/           # Jinja2 templates
-├── data/                    # Generated on first run
-│   ├── tools.json           # 234,349 tools
-│   ├── search_index.json    # Inverted index (236k words)
-│   ├── summary_enriched.csv # 2,285 repos with stars
-│   └── collections.json     # Your collections
-├── offline-db/              # Downloaded readmes
-├── awesome                  # Shell wrapper
-├── download.sh              # Download lists from GitHub
-├── extract_tools.py         # Extract tools from READMEs
-└── requirements.txt         # flask>=3.0.0
-```
-
-## API (Python)
-
-```python
-from core.database import AwesomeDB
-from core.tools_db import ToolsDB
-from core.curator import ToolCurator
-
-# Search repos
-db = AwesomeDB()
-results = db.search("osint")
-
-# Search tools
-tools = ToolsDB()
-results = tools.search("vpn", limit=50)
-
-# Install & collections
-curator = ToolCurator()
-curator.install_tool("nmap")
-curator.create_collection("my-tools", "My tools", ["nmap", "masscan"])
-```
-
-## Dependencies
-
-- Python 3.8+
-- Flask >= 3.0.0 (web only)
-- curl + jq (download only)
-- gh CLI (optional, for auth)
-- curses (stdlib, TUI only)
-
-## Philosophy
-
-- **Zero hardcoded paths** — `Path(__file__).parent.parent`
-- **One engine, three interfaces** — CLI / TUI / Web
-- **Auto-port** — no conflicts with other services
-- **Local data** — zero API after download
-- **GitHub stars** — we know what's popular
-
-## License
-
-MIT — use it, modify it, share it.
-
-## Author
-
-**Arkadiusz Słowik** — [technoporada](https://github.com/technoporada)
-
-```
-██╗   ██╗ █████╗ ██████╗  █████╗
-██║   ██║██╔══██╗██╔══██╗██╔══██╗
-██║   ██║███████║██████╔╝███████║
-╚██╗ ██╔╝██╔══██║██╔══██╗██╔══██║
- ╚████╔╝ ██║  ██║██║  ██║██║  ██║
-  ╚═══╝  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
+./awesome            # terminal — najszybszy do szybkiego szukania
+./awesome tui        # terminal, ale interaktywnie (strzałki, filtry)
+./awesome web        # przeglądarka (http://localhost:5001)
+./awesome help       # wszystkie komendy
 ```
 
 ---
 
-*Built with passion for open source tools* 🔧
+## Codzienna pielęgnacja (nic nie leci samo)
+
+```bash
+./awesome status     # co jest w bazie, kiedy ostatnio odświeżone, czego brakuje
+./awesome refresh    # pobierz nowe listy → metadane → przebuduj bazę
+```
+
+`./awesome status` po odświeżeniu podpowiada dokładną komendę, np.
+`./awesome enrich --limit 20000`. To samo w przeglądarce: strona `/refresh`
+z czterema przyciskami. Żadnych cronów, daemonów ani procesów w tle.
+
+---
+
+## Czego nie wiem — słowniczek
+
+| Słowo | Co to znaczy |
+|---|---|
+| **awesome list** | lista linków do narzędzi prowadzona na GitHubie (np. `sindresorhus/awesome`) |
+| **baza (SQLite)** | jeden plik `data/awesome.db` z całym katalogiem; zwykły plik, możesz go skasować i przebudować |
+| **FTS5** | wbudowany w SQLite szybki indeks tekstowy — dzięki niemu szukanie trwa milisekundy |
+| **metadane listy** | gwiazdki, język, opis listy z GitHuba |
+| **metadane narzędzia** | gwiazdki, język i czy żyje repozytorium **samego narzędzia** |
+| **consensus (zgoda)** | narzędzie wskazane przez ilu **różnych** autorów list — nasz główny ranking |
+| **jakość listy** | 0–1: czy lista ma opisy, czy duplikaty, czy jej linki żyją, czy jest aktualna |
+| **score** | punkty narzędzia (0–100) z tych wszystkich sygnałów |
+| **backfill** | dociąganie brakujących metadanych list |
+| **enrich** | sprawdzanie repozytoriów narzędzi (batch po 50 na zapytanie do API) |
+| **build** | przebudowa bazy z lokalnych plików README (~2 min) |
+| **fasetka** | klikalny filtr boczny, np. „język: Python” |
+
+---
+
+## Znane ograniczenia (uczciwie)
+
+* **Wyszukiwarka GitHuba oddaje maks. 1000 wyników na jedno zapytanie.**
+  Dlatego pobieranie używa kilku zapytań naraz (`--wide`) i skaluje wyniki.
+* **Prawdziwy język narzędzia** znamy tylko dla repozytoriów sprawdzonych przez
+  `./awesome enrich`. Reszta zgadywana jest z adresu i opisu — stąd `?` tam,
+  gdzie nie wiadomo. Ranking celowo nie ufa temu zgadywaniu.
+* **Linki poza GitHubem** sprawdzamy tylko na żądanie:
+  `./awesome validate --non-github --limit 500`.
+* **Nie sprawdzamy, czy narzędzie jest bezpieczne.** Sygnały przy repozytoriach
+  (archiwalne, dawno nieaktualizowane) to wskazówki do sprawdzenia, nie etykieta.
+  Przeczytaj kod i release'y, zanim cokolwiek zainstalujesz.
+
+---
+
+## Dla tych, którzy chcą wejść głębiej
+
+<details>
+<summary>Struktura projektu</summary>
+
+```
+awesome              # wygodny wrapper: ./awesome <komenda>
+download.sh          # pobieranie README list z GitHuba (bash + gh + jq)
+extract_tools.py     # budowa bazy z lokalnych README
+data/awesome.db      # baza SQLite (generowana, w .gitignore)
+offline-db/          # pobrane README list (generowane, w .gitignore)
+
+core/store.py        # schemat bazy, migracje, zapis metadanych
+core/parser.py       # wyciąganie narzędzi z markdown (listy i tabele)
+core/langmap.py      # język / platforma / domena / czyszczenie URL-i
+core/scoring.py      # consensus, jakość listy, ranking
+core/aliases.py      # synonimy („port scanner” → nmap, masscan…)
+core/md.py           # własny renderer Markdown → HTML (bez CDN)
+core/builder.py      # orkiestracja builda
+core/backfill.py     # metadane list
+core/enrich.py       # metadane repozytoriów narzędzi
+core/status.py       # stan danych i plan odświeżenia
+core/tools_db.py     # zapytania (search, fasetki, ranking)
+core/database.py     # zapytania po listach/repozytoriach
+core/curator.py      # kolekcje + instalacja
+core/validator.py    # weryfikacja linków
+core/trust.py        # sygnały ryzyka przy repozytoriach
+cli/awesome_cli.py   # CLI
+cli/tui.py           # TUI (curses)
+web/app.py           # Flask UI
+web/templates/       # szablony Jinja2
+tests/smoke_test.py  # 32 testy (CI)
+```
+
+</details>
+
+<details>
+<summary>Jak liczymy ranking</summary>
+
+`score` (0–100) to świadoma korekta nad „sortuj po gwiazdkach listy”:
+
+| Składowa | Waga | Znaczenie |
+|---|---|---|
+| `consensus` | 0.28 | w ilu **niezależnych** listach jest narzędzie × jakość tych list |
+| `own_stars` | 0.22 | gwiazdki **samego narzędzia** (z API), nie listy |
+| `quality` | 0.14 | jakość listy: opisy, unikalność, żywe linki, świeżość, rozmiar |
+| `alive` | 0.14 | link sprawdzony i żywy |
+| `desc` | 0.10 | ma sensowny opis |
+| `list_stars` | 0.06 | gwiazdki listy (słaby sygnał) |
+| `known` | 0.06 | mamy metadane narzędzia z API |
+
+Dodatkowo `underrated` (dobra jakość, mało gwiazdek) i `hidden_gem` (mało list,
+wysoki score). `./awesome why <nazwa>` pokazuje rozkład punktów.
+
+</details>
+
+<details>
+<summary>Wymagania i licencja</summary>
+
+* Python 3.8+ (SQLite z FTS5; bez FTS5 działa fallback na LIKE)
+* Flask ≥ 3.0 — tylko dla web UI
+* `gh`, `jq`, `curl` — tylko do pobierania i enrichmentu
+* `curses` z biblioteki standardowej — tylko dla TUI
+
+MIT — używaj, zmieniaj, dziel się.
+Autor: [Arkadiusz Słowik](https://github.com/technoporada)
+
+</details>

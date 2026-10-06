@@ -18,7 +18,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -r requirements.txt
-      - run: python -c "from core.database import AwesomeDB; from core.tools_db import ToolsDB; from core.curator import ToolCurator; print('All imports OK')"
+      - name: Import test
+        run: python -c "from core.database import AwesomeDB; from core.tools_db import ToolsDB; from core.curator import ToolCurator; from core import builder, enrich, backfill, md, parser, scoring, langmap, store; print('All imports OK')"
+      - name: Smoke test na danych testowych
+        run: python tests/smoke_test.py
 
   lint:
     runs-on: ubuntu-latest
@@ -28,7 +31,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install flake8
-      - run: flake8 --select=E9,F63,F7,F82 --max-line-length=120 core/ cli/ web/
+      - run: flake8 --select=E9,F63,F7,F82 --max-line-length=120 core/ cli/ web/ extract_tools.py tests/
+      - run: bash -n download.sh && echo "download.sh OK"
 
   security:
     runs-on: ubuntu-latest
