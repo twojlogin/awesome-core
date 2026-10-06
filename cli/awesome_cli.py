@@ -26,7 +26,7 @@ Wyszukiwanie:
 
 Listy i fasetki:
   awesome langs | platforms | domains — co jest w bazie
-  awesome lists                       — najlepsze listy wg jakości
+  awesome lists                       — listy z najwyższą oceną jakości
   awesome clones                      — kopie i forki list (wpływ na ranking)
   awesome untrusted                   — skan opisów pod kątem prompt injection
 awesome audit                       — czy katalog nie jest zatruty fałszywymi listami
@@ -139,7 +139,7 @@ def cmd_domains(db):
 
 
 def cmd_lists(db, n=20):
-    print(f"\nNajlepsze listy wg jakości ({n}):")
+    print(f"\nListy z najwyższą oceną jakości ({n}):")
     for row in db.best_lists(n=n, min_tools=10):
         print(
             f"  {row['quality']:.2f}  {row['stars']:>7}★  "
@@ -408,21 +408,6 @@ def cmd_collection(curator, name):
     coll = curator.collections.get(name, {})
     print(f"\n{coll.get('description') or name} ({len(tools)}):")
     print_tools(tools, 100, show_url=False)
-
-
-def cmd_ask(tools_db, question):
-    from core.ai_librarian import recommend
-
-    print(f"\nAI Bibliotekarz: {question}")
-    try:
-        result = recommend(tools_db, question)
-    except RuntimeError as exc:
-        print(f"AI niedostępne: {exc}")
-        return
-    for i, rec in enumerate(result["recommendations"], 1):
-        print(f"  {i}. {rec['tool']['name']}")
-        print(f"     {rec['why']}")
-    print(f"[via {result['provider']}]")
 
 
 FLASK_HINT = r"""Web UI potrzebuje Flask, a w tej Pythonie go nie ma.
@@ -1226,9 +1211,6 @@ def main():
     elif cmd == "add" and len(args) >= 3:
         _, _, curator = dbs()
         print("Dodano." if curator.add_to_collection(args[0], args[1]) else "Brak kolekcji.")
-    elif cmd == "ask" and args:
-        tools_db, _, _ = dbs()
-        cmd_ask(tools_db, " ".join(args))
     elif cmd in {"start", "start-here", "pierwszy-raz"}:
         sys.exit(cmd_start(args) or 0)
     elif cmd in {"shortlist", "moja-lista"}:

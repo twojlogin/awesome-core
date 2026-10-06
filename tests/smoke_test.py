@@ -930,6 +930,36 @@ class TestNoAIinCore(unittest.TestCase):
         self.assertEqual(offenders, set(),
                          f"te pliki sięgają poza proces bez powodu: {offenders}")
 
+    def test_no_imports_of_modules_that_do_not_exist(self):
+        """Historia: `awesome ask` importował usunięty core/ai_librarian i
+        wywalał się ModuleNotFoundError dopiero przy wywołaniu. Importy
+        sprawdzane są statycznie, więc taki błąd nie czeka na użytkownika."""
+        import ast
+
+        root = Path(__file__).parent.parent
+        available = {f"core.{p.stem}" for p in (root / "core").glob("*.py")}
+        available |= {f"cli.{p.stem}" for p in (root / "cli").glob("*.py")}
+        available |= {p.stem for p in (root / "core").glob("*.py")}
+        available |= {p.stem for p in (root / "cli").glob("*.py")}
+        broken = []
+        for folder in ("core", "cli", "web"):
+            for path in sorted((root / folder).glob("*.py")):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in ast.walk(tree):
+                    names = []
+                    if isinstance(node, ast.ImportFrom) and node.level:
+                        continue          # względne importy wewnątrz pakietu
+                    if isinstance(node, ast.ImportFrom) and node.module:
+                        names = [node.module]
+                    elif isinstance(node, ast.Import):
+                        names = [a.name for a in node.names]
+                    for name in names:
+                        if name.startswith("core.") or name.startswith("cli."):
+                            if name not in available:
+                                broken.append(f"{path.name}: {name}")
+        self.assertEqual(broken, [],
+                         f"importy modułów, które nie istnieją: {broken}")
+
     def test_core_has_no_ai_named_modules(self):
         import re
 
@@ -973,6 +1003,21 @@ class TestNoAIinCore(unittest.TestCase):
                 if pattern.search(line):
                     leaks.append(f"{path.relative_to(root)}:{number}: {line.strip()[:70]}")
         self.assertEqual(leaks, [], "prywatne ścieżki w kodzie:\n" + "\n".join(leaks))
+
+    def test_nothing_recommends(self):
+        """Zasada właściciela: „nigdy się nie poleca nic".
+
+        Nie chodzi o zakaz słowa w komentarzu, tylko o to, żeby narzędzia
+        MCP nie obiecywały agentowi rekomendacji. Zwracają kryteria i liczby.
+        """
+        for tool in mcp.TOOLS:
+            text = f"{tool['name']} {tool['description']}".lower()
+            # Nie szukamy samego słowa "rekomendacja" — opis może mówić
+            # wprost "to nie rekomendacja". Szukamy zwrotów, które coś obiecują.
+            for banned in ("rekomendujemy", "polecam", "polecane", "should use",
+                           "najlepszy wybór", "use this tool", "zarekomenduj"):
+                self.assertNotIn(banned, text,
+                                 f"{tool['name']} obiecuje rekomendację: {banned}")
 
     def test_mcp_is_the_only_ai_adapter(self):
         core = Path(__file__).parent.parent / "core"

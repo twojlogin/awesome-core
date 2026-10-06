@@ -429,6 +429,12 @@ słyszałeś, to znak sprawdzenia — nie polecenia instalacji.
 | **consensus (zgoda)** | narzędzie wskazane przez ilu **różnych** autorów list — nasz główny ranking |
 | **jakość listy** | 0–1: czy lista ma opisy, czy duplikaty, czy jej linki żyją, czy jest aktualna |
 | **score** | punkty narzędzia (0–100) z tych wszystkich sygnałów |
+
+**Program niczego nie rekomenduje.** Nie ma w nim „polecam", „najlepszy wybór"
+ani LLM, który podpowiada narzędzia. Jest za to: policzone liczby (zgoda
+niezależnych kuratorów, gwiazdki, jakość listy, z jakich list narzędzie
+pochodzi) i filtry o jawnych kryteriach. Wybór zostaje po Twojej stronie —
+dlatego wszystko, co program mówi, da się sprawdzić liczbą.
 | **backfill** | dociąganie brakujących metadanych list |
 | **enrich** | sprawdzanie repozytoriów narzędzi (batch po 50 na zapytanie do API) |
 | **build** | przebudowa bazy z lokalnych plików README (~2 min) |
@@ -490,7 +496,7 @@ cli/awesome_cli.py   # CLI
 cli/tui.py           # TUI (curses)
 web/app.py           # Flask UI
 web/templates/       # szablony Jinja2
-tests/smoke_test.py  # 103 testy (CI)
+tests/smoke_test.py  # 105 testy (CI)
 ```
 
 </details>

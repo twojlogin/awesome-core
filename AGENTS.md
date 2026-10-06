@@ -9,7 +9,7 @@ Katalog narzędzi z awesome list — skala i liczby są w README, sekcja
 „Co jest w środku". **Nie powielaj ich tutaj**: zestarzały się już raz
 (1 026 → 1 032 list) i pilnuje tego test, nie komentarz.
 Baza `data/awesome.db` jest generowana, nigdy nie w repo. Kod: ~8,8k linii
-Pythona, 103 testy, jedna zależność zewnętrzna (flask, tylko web UI).
+Pythona, 105 testy, jedna zależność zewnętrzna (flask, tylko web UI).
 
 Weryfikacja stanu: `./awesome status`. Nic nie działa samo — brak cronów,
 daemonów i procesów w tle.
@@ -63,7 +63,16 @@ fałszywą listę i wymaga, żeby ją widział. **Nie wolno rozluźniać progów
 czyli mało, a na rozluźnionych było 1608 na 186k narzędzi, czyli nikt by tego
 nie czytał. Nigdy nie przedstawiaj tego skanu jako gwarancji.
 
-**9. Uczciwe liczby.** Nie zaokrąglamy w górę, nie mieszamy narzędzi
+**9. Nigdy nie polecamy niczego.** Zasada właściciela, brzmiąca krótko:
+„nigdy się nie poleca nic". Program pokazuje **co jest** i **ile tego jest** —
+zgoda kuratorów, gwiazdki, jakość listy, z jakich list pochodzi — a decyzję
+zostawia użytkownikowi. Żadnego „polecam", „rekomendacja", „najlepszy wybór".
+Ranking to **filtrowanie po jawnych kryteriach**, nie rada. Z tego powodu usunięte
+zostały: komenda `awesome ask` (LLM rekomendował narzędzia z uzasadnieniem),
+`/api/ai/ask` i `core/ai_librarian.py`. Jeśli dodajesz coś, co „podpowiada",
+pomyśl, czy to nie jest podpowiedź pod maską.
+
+**10. Uczciwe liczby.** Nie zaokrąglamy w górę, nie mieszamy narzędzi
 z repozytoriami, nie nazywamy 3 206 martwych repo „udanymi". `status` mówi
 „repozytoriów do odpytania", nie „narzędzi bez gwiazdek" — bo ponad 75 tys. wpisów to
 artykuły i filmy, których gwiazdek nie da się mieć.
@@ -88,7 +97,7 @@ artykuły i filmy, których gwiazdek nie da się mieć.
 ## Jak sprawdzić, czy nie zepsuliśmy
 
 ```bash
-python3 tests/smoke_test.py      # 103 testy, ~35 s
+python3 tests/smoke_test.py      # 105 testy, ~35 s
 python3 -m flake8 --select=E9,F63,F7,F82 --max-line-length=120 core/ cli/ web/ tests/
 ./awesome status                 # stan danych i co ewentualnie odświeżyć
 ./awesome untrusted              # skan opisów pod prompt injection
