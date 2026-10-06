@@ -27,6 +27,8 @@ Listy i fasetki:
   awesome langs | platforms | domains — co jest w bazie
   awesome lists                       — najlepsze listy wg jakości
 awesome clones                      — kopie i forki list (wpływ na ranking)
+awesome mcp                         — serwer MCP (stdio) dla lokalnych agentów
+awesome mcp --demo                  — pokaż wymianę JSON-RPC
   awesome list <owner/repo>           — narzędzia z listy
   awesome mentions <url|nazwa>        — w ilu listach jest narzędzie
   awesome why <url|nazwa>             — rozkład rankingu
@@ -597,6 +599,13 @@ def cmd_shortlist(tools_db, args):
         print("  --title \"Moja lista\"")
 
 
+def cmd_mcp(args):
+    """Serwer MCP po stdio — lokalny katalog dla agentów (read-only, offline)."""
+    from core import mcp
+
+    return mcp.main(args)
+
+
 def cmd_clones(tools_db, args):
     """Kopie i forki awesome list — i co z tego wynika dla rankingu."""
     overlap = _flag_value(args, "--min-overlap")
@@ -969,6 +978,8 @@ def main():
     elif cmd in {"shortlist", "moja-lista"}:
         tools_db, _, _ = dbs()
         cmd_shortlist(tools_db, args)
+    elif cmd in {"mcp", "agent"}:
+        sys.exit(cmd_mcp(args) or 0)
     elif cmd in {"clones", "kopie"}:
         tools_db, _, _ = dbs()
         cmd_clones(tools_db, args)

@@ -15,7 +15,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from core import aliases, clones, langmap, md, parser, scoring  # noqa: E402
+from core import aliases, clones, langmap, md, mcp, parser, scoring  # noqa: E402
 from core.builder import build  # noqa: E402
 from core.database import AwesomeDB  # noqa: E402
 from core import status as status_mod  # noqa: E402
@@ -153,6 +153,154 @@ class TestParser(unittest.TestCase):
         mentions = parser.parse_readme(README_A)
         nmap = next(m for m in mentions if "nmap" in m["url"])
         self.assertEqual(nmap["section"], "Security Tools")
+
+
+class TestMCP(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp())
+        cls.readme_dir = cls.tmp / "offline-db" / "data" / "readmes"
+        cls.readme_dir.mkdir(parents=True)
+        body = "\n".join(
+            f"- [tool{i}](https://github.com/acme/tool{i}) - narzędzie {i}" + "\n"
+            for i in range(40)
+        )
+        (cls.readme_dir / "acme__awesome-x.md").write_text(
+            "# X\n\n## Tools\n\n" + body, encoding="utf-8"
+        )
+        (cls.tmp / "offline-db" / "data" / "index.json").write_text(
+            json.dumps({"acme/awesome-x": {"owner": "acme", "name": "awesome-x",
+                                           "stars": 500}}), encoding="utf-8"
+        )
+        cls.data_dir = cls.tmp / "data"
+        cls.data_dir.mkdir()
+        build(
+            data_dir=cls.data_dir, verbose=False,
+            index_file=cls.tmp / "offline-db" / "data" / "index.json",
+            readme_dir=cls.readme_dir,
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def setUp(self):
+        self.server = mcp.MCPServer(self.data_dir)
+
+    def _call(self, tool, arguments=None):
+        response = self.server.handle({
+            "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments or {}},
+        })
+        return response
+
+    def test_initialize_echoes_client_protocol(self):
+        response = self.server.handle({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {"protocolVersion": "2025-06-18",
+                       "clientInfo": {"name": "t", "version": "1"}},
+        })
+        self.assertEqual(response["id"], 1)
+        self.assertEqual(response["result"]["protocolVersion"], "2025-06-18")
+        self.assertEqual(response["result"]["serverInfo"]["name"], "awesome-core")
+        self.assertIn("tools", response["result"]["capabilities"])
+
+    def test_notification_gets_no_response(self):
+        self.assertIsNone(self.server.handle(
+            {"jsonrpc": "2.0", "method": "notifications/initialized"}
+        ))
+
+    def test_tools_list_schema(self):
+        response = self.server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        tools = {t["name"]: t for t in response["result"]["tools"]}
+        self.assertIn("search_tools", tools)
+        self.assertEqual(tools["search_tools"]["inputSchema"]["required"], ["query"])
+        for tool in tools.values():
+            self.assertTrue(tool["description"])
+            self.assertIn("inputSchema", tool)
+
+    def test_ping(self):
+        self.assertEqual(
+            self.server.handle({"jsonrpc": "2.0", "id": 3, "method": "ping"}),
+            {"jsonrpc": "2.0", "id": 3, "result": {}},
+        )
+
+    def test_unknown_method_is_error(self):
+        response = self.server.handle({"jsonrpc": "2.0", "id": 4, "method": "nope"})
+        self.assertEqual(response["error"]["code"], -32601)
+
+    def test_unknown_tool_is_error(self):
+        response = self._call("nie_ma_takiego")
+        self.assertEqual(response["error"]["code"], -32602)
+
+    def test_search_tools_returns_text(self):
+        text = self._call("search_tools", {"query": "tool1"})["result"]["content"][0]["text"]
+        self.assertIn("tool1", text)
+        self.assertIn("wyników dla", text)
+
+    def test_search_consensus_filter_hides_single_list_tools(self):
+        """min_consensus filtruje — i mówi wprost, co zmienić."""
+        text = self._call("search_tools", {"query": "tool1"})["result"]["content"][0]["text"]
+        self.assertNotIn("github.com/acme/tool1", text)
+        self.assertIn("min_consensus=0", text)
+        text = self._call(
+            "search_tools", {"query": "tool1", "min_consensus": 0}
+        )["result"]["content"][0]["text"]
+        self.assertIn("github.com/acme/tool1", text)
+
+    def test_search_requires_query(self):
+        text = self._call("search_tools", {})["result"]["content"][0]["text"]
+        self.assertIn("Podaj 'query'", text)
+
+    def test_search_rejects_absurd_query(self):
+        """SQLite wywraca się na LIKE dłuższym niż ~500 znaków — łapiemy to wcześniej."""
+        text = self._call(
+            "search_tools", {"query": "x" * 5000}
+        )["result"]["content"][0]["text"]
+        self.assertIn("maksymalnie 200", text)
+
+    def test_no_results_names_the_active_filters(self):
+        """Fixture nie ma sprawdzonych linków, więc alive_only odsiewa wszystko."""
+        text = self._call(
+            "search_tools", {"query": "tool1", "min_consensus": 0, "alive_only": True}
+        )["result"]["content"][0]["text"]
+        self.assertIn("alive_only=true", text)
+        self.assertIn("catalog_facets", text)
+        text = self._call(
+            "search_tools", {"query": "tool1", "lang": "Rust", "min_consensus": 3}
+        )["result"]["content"][0]["text"]
+        self.assertIn("lang=Rust", text)
+        self.assertIn("min_consensus=3", text)
+
+    def test_explain_and_lists(self):
+        text = self._call("explain_tool", {"tool": "tool1"})["result"]["content"][0]["text"]
+        self.assertIn("rozkład punktów", text)
+        text = self._call("lists_with_tool", {"tool": "tool1"})["result"]["content"][0]["text"]
+        self.assertIn("acme/awesome-x", text)
+
+    def test_facets(self):
+        text = self._call("catalog_facets")["result"]["content"][0]["text"]
+        self.assertIn("Katalog:", text)
+        self.assertIn("acme/awesome-x", text)
+
+    def test_serve_end_to_end(self):
+        """Pełna pętla stdin → stdout."""
+        requests = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+             "params": {"protocolVersion": mcp.PROTOCOL_DEFAULT}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+             "params": {"name": "catalog_facets", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 3, "method": "exit"},
+        ]
+        import io
+
+        stdin = io.StringIO("\n".join(json.dumps(r) for r in requests) + "\n")
+        stdout = io.StringIO()
+        mcp.serve(self.data_dir, stdin=stdin, stdout=stdout)
+        lines = [json.loads(line) for line in stdout.getvalue().splitlines() if line.strip()]
+        self.assertEqual([r["id"] for r in lines], [1, 2])
+        self.assertIn("Katalog:", lines[1]["result"]["content"][0]["text"])
 
 
 class TestClones(unittest.TestCase):

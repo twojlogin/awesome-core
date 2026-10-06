@@ -135,6 +135,49 @@ z czterema przyciskami. Żadnych cronów, daemonów ani procesów w tle.
 
 ---
 
+## Podłącz agenta AI (MCP) — lokalnie, bez kluczy API
+
+Katalog można dać do dyspozycji lokalnemu agentowi (Claude, Cursor, cokolwiek
+mówi „Model Context Protocol”) jako źródło narzędzi. Agent dostaje ranking
+oparty o zgodę niezależnych kuratorów, a nie o to, co jest najczęściej
+wypisane w jednym README.
+
+```bash
+./awesome mcp --demo    # podgląd: zobaczysz całą wymianę JSON-RPC bez agenta
+./awesome mcp           # serwer czeka na stdin (tak to działa w praktyce)
+```
+
+Serwer daje 5 narzędzi: `search_tools` (szukanie z filtrami),
+`find_undiscovered_tools` (niedoceniane i ukryte perełki), `explain_tool`
+(uzasadnienie rankingu: z jakich list, ile punktów, co ważyło),
+`lists_with_tool` (wszystkie listy + oznaczone kopie) i `catalog_facets`
+(co jest w bazie: języki, platformy, domeny).
+
+Wpisz to do konfiguracji klienta, np. `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "awesome-core": {
+      "command": "/pełna/ścieżka/do/awesome-core2/awesome",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Co warto wiedzieć:
+
+- **Nic nie wychodzi do sieci.** Zero kluczy API, zero kont, tylko odczyt
+  lokalnej bazy SQLite. Serwer nie ma narzędzi z efektem ubocznym.
+- **Start jest natychmiastowy** — baza jest już zbudowana, serwer tylko czyta.
+- Wyniki to zwykły tekst z liczbami (gwiazdki, liczba niezależnych list, score),
+  więc agent może je cytować i porównywać.
+- Protokół jest czystym JSON-RPC 2.0 po stdin/stdout; logi idą na stderr,
+  żeby nie psuły kanału.
+
+---
+
 ## Czego nie wiem — słowniczek
 
 | Słowo | Co to znaczy |

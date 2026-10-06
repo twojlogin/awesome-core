@@ -63,6 +63,30 @@ Na końcu wygeneruj Markdown do wklejenia we własnym README.</p>
 <p class="small dim">W przeglądarce: przycisk <b>☆ Do mojej listy</b> na stronie narzędzia,
 potem link <b>Moja lista</b> → <b>Markdown do wklejenia</b>. W TUI: klawisz <code>k</code>.</p>
 
+<h2>Podłącz lokalnego agenta AI (MCP)</h2>
+<p class="muted small">Katalog jako źródło narzędzi dla agenta — lokalnie,
+bez kluczy API i bez wysyłania czegokolwiek do sieci. Ranking oparty o zgodę
+niezależnych kuratorów, nie o to, co najczęściej wypisane w jednym README.</p>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome mcp --demo    # podgląd wymiany JSON-RPC
+./awesome mcp           # serwer dla agenta (stdio)
+</pre>
+<p class="small">W <code>claude_desktop_config.json</code> (lub analogicznie w Cursorze):</p>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+{
+  "mcpServers": {
+    "awesome-core": {
+      "command": "/pełna/ścieżka/do/awesome-core2/awesome",
+      "args": ["mcp"]
+    }
+  }
+}
+</pre>
+<p class="small dim">Narzędzia serwera: <code>search_tools</code>,
+<code>find_undiscovered_tools</code>, <code>explain_tool</code>,
+<code>lists_with_tool</code>, <code>catalog_facets</code>. Serwer czyta bazę
+i nic nie zapisuje.</p>
+
 <h2>TUI</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
 ./awesome tui
