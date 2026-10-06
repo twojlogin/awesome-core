@@ -96,6 +96,21 @@ Jeśli masz mało czasu, krok 1 możesz pominąć i nadrobić później:
 ./awesome install nmap                             # zainstaluj (git clone)
 ```
 
+### Twoja własna lista
+
+Jak coś znajdziesz i działa — włóż to od razu na swoją listę, a na końcu
+wklej gotowy Markdown:
+
+```bash
+./awesome shortlist add nmap --note "do skanowania sieci"
+./awesome shortlist                            # co jest na liście
+./awesome shortlist emit --title "Moja lista OSINT" --group domain
+./awesome shortlist emit --out moja-lista.md  # zapisz do pliku
+```
+
+W web UI jest to samo: przycisk **☆ Do mojej listy** na stronie narzędzia,
+lista i Markdown pod linkiem *Moja lista* w menu. W TUI klawisz `k`.
+
 ### Trzy interfejsy, ten sam katalog
 
 ```bash

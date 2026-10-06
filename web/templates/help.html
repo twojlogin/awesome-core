@@ -52,13 +52,24 @@ narzędzia z GitHub API, żywy link, opis i kompletność metadanych.</p>
 ./awesome list vinta/awesome-python # narzędzia z jednej listy
 </pre>
 
+<h2>Twoja własna lista</h2>
+<p class="muted small">Znalazłeś coś, co działa? Włóż to od razu na swoją listę.
+Na końcu wygeneruj Markdown do wklejenia we własnym README.</p>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome shortlist add nmap --note "do skanowania"
+./awesome shortlist
+./awesome shortlist emit --out moja-lista.md
+</pre>
+<p class="small dim">W przeglądarce: przycisk <b>☆ Do mojej listy</b> na stronie narzędzia,
+potem link <b>Moja lista</b> → <b>Markdown do wklejenia</b>. W TUI: klawisz <code>k</code>.</p>
+
 <h2>TUI</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
 ./awesome tui
 </pre>
 <p class="small dim"><code>/</code> szukaj · <code>l</code> język · <code>o</code> platforma ·
 <code>d</code> domena · <code>s</code> sort · <code>g</code> perełki · <code>u</code> niedoceniane ·
-<code>Enter</code> szczegóły · <code>i</code> instalacja · <code>?</code> pomoc · <code>q</code> wyjście</p>
+<code>Enter</code> szczegóły · <code>k</code> do mojej listy · <code>i</code> instalacja · <code>?</code> pomoc · <code>q</code> wyjście</p>
 
 <h2>Dane i eksport</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
