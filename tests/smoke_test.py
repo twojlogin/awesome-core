@@ -667,6 +667,41 @@ class TestDocsAreTruthful(unittest.TestCase):
                          f"README mówi '{pair}' o linkach, baza ma {alive} żywych "
                          f"i {dead} martwych")
 
+    def test_help_page_documents_the_same_commands_as_cli(self):
+        """/help w przeglądarce rozjechał się z `awesome help`.
+
+        Tak było: w CLI-help brakowało 6 komend, cztery były bez wcięcia,
+        a strona /help nie wspominała o `start`, `clones`, `untrusted`,
+        `consensus`, `stats`, `download`, `install`, `watch`, `demo`, `repos`,
+        ani o Windowsie i o tym, że Flask instaluje się sam. Wspólna lista
+        komend w helpie CLI jest tu źródłem prawdy dla obu powierzchni.
+        """
+        import re
+
+        root = Path(__file__).parent.parent
+        cli_help = (root / "cli" / "awesome_cli.py").read_text(
+            encoding="utf-8").split('"""')[1]
+        commands = set(re.findall(r"awesome ([a-z_-]+)", cli_help))
+        # wewnętrzne/eksperymentalne oraz te, które web opisuje słowami
+        internal = {"demo", "create", "repos", "listy", "top", "stats",
+                    "install", "watch", "check", "add", "uninstall", "installed"}
+        page = (root / "web" / "templates" / "help.html").read_text(
+            encoding="utf-8")
+        self.assertGreater(len(commands), 25)
+        missing = sorted(c for c in commands - internal
+                         if c not in page and c.replace("_", "-") not in page)
+        self.assertEqual(missing, [],
+                         f"te komendy są w `awesome help`, ale nie na stronie "
+                         f"/help: {missing}")
+
+    def test_help_page_has_no_stale_shell_commands(self):
+        """Stary download.sh z numerami i --limit 20000 były w /help, choć
+        download.sh to dziś nakładka, a --limit ucinał pracę w połowie."""
+        page = (Path(__file__).parent.parent / "web" / "templates"
+                / "help.html").read_text(encoding="utf-8")
+        for stale in ("download.sh awesome-list", "limit 20000", "trzy interfejsy"):
+            self.assertNotIn(stale, page, f"/help nadal zawiera '{stale}'")
+
     def test_documented_commands_are_real(self):
         """Każde `./awesome X` z dokumentacji musi naprawdę istnieć.
 

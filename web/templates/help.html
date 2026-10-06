@@ -2,8 +2,9 @@
 {% block title %}Pomoc — Awesome Core{% endblock %}
 {% block content %}
 <h2 style="margin-top:0;">Awesome Core — lokalny katalog narzędzi z awesome list</h2>
-<p class="muted">Jeden silnik (SQLite + FTS5), trzy interfejsy: <b>CLI</b>, <b>TUI</b>, <b>Web</b>.
-Po pobraniu list zero sieci — wszystko działa lokalnie.</p>
+<p class="muted">Jeden silnik (SQLite + FTS5), cztery wejścia: <b>CLI</b>, <b>TUI</b>,
+<b>Web</b> i <b>MCP</b> dla lokalnych agentów. Po pobraniu list zero sieci —
+wszystko działa lokalnie.</p>
 
 <h2>Nic nie działa w tle</h2>
 <p class="muted small">Żadnych cronów, daemonów ani ukrytych procesów. Odświeżanie
@@ -13,23 +14,35 @@ więc zawsze widzisz, co się stało.</p>
 
 <h2>Pierwsze uruchomienie</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
-./awesome refresh        # download → backfill → enrich → build, po kolei
+./awesome start          # pobierz listy → zbuduj bazę → metadane list
 ./awesome status         # co jest w bazie i co warto odświeżyć
 </pre>
-<p class="small dim">Kroki pojedynczo: <code>./download.sh awesome-list 100 1 20 --wide</code> ·
-<code>./awesome build</code> · <code>./awesome backfill</code> ·
-<code>./awesome enrich --limit 20000</code>. Plan bez wykonywania:
+<p class="muted small"><code>start</code> nie odpytuje GitHuba o repozytoria samych
+narzędzi — ranking działa od razu, ale „★" przy narzędziu to na razie szacunek
+z listy. Jedna komenda to naprawia: <code>./awesome enrich</code> (30–60 min,
+Ctrl+C jest bezpieczny, dokończenie jedzie od miejsca przerwania), potem
+<code>./awesome build</code>.</p>
+<p class="small">Na Windows: <code>awesome.cmd start</code> — działa w PowerShellu
+i po podwójnym kliknięciu, bez basha.</p>
+<p class="small dim">Odświeżanie później: <code>./awesome refresh</code> (kolejność
+i czasy wypisuje na ekranie). Pojedyncze kroki:
+<code>./awesome download</code> · <code>./awesome build</code> ·
+<code>./awesome backfill</code> · <code>./awesome enrich</code>. Plan bez wykonywania:
 <code>./awesome refresh --dry-run</code>.</p>
 
 <h2>Wyszukiwanie po ludzku</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
-./awesome search "port scanner" --lang Python --os windows --sort consensus
+./awesome search "port scanner"
 ./awesome search osint --domain security --min-consensus 3
-./awesome search "active directory" --limit 30
+./awesome search "active directory" --os windows
 </pre>
 <p class="small dim">Filtry: <code>--lang</code> <code>--os</code> <code>--domain</code>
 <code>--list</code> <code>--min-stars</code> <code>--min-consensus</code>
 <code>--sort</code> (score, stars, consensus, underrated, gem, name) <code>--alive</code>.</p>
+<p class="small dim"><b>Filtry łączy AND, więc kumulują się.</b>
+<code>--lang Python --os windows</code> przy „port scanner" zostawia 5 wyników,
+a z trzecim filtrem często jeden przypadkowy. Program mówi wtedy wprost, który
+filtr odpuścić i ile wtedy wychodzi.</p>
 
 <h2>Fasetyki</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
@@ -40,6 +53,21 @@ więc zawsze widzisz, co się stało.</p>
 ./awesome underrated     # dobre narzędzia z małych list
 ./awesome gems           # ukryte perełki
 </pre>
+
+<h2>Rzadziej używane</h2>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome clones          # kopie i forki list (próg 80%)
+./awesome untrusted       # skan opisów pod kątem prompt injection
+./awesome consensus       # narzędzia z największą zgodą kuratorów
+./awesome top 10          # top list wg gwiazdek
+./awesome repos osint     # szukaj list/repozytoriów
+./awesome watch add vinta/awesome-python   # śledzone repozytoria list
+./awesome install nmap    # git clone narzędzia
+./awesome demo            # co program potrafi, na żywo
+</pre>
+<p class="small dim"><code>watch</code> i <code>shortlist</code> to dwie różne listy:
+watch śledzi <b>repozytoria list</b> (co doszło nowego), shortlist zbiera
+<b>narzędzia</b> i generuje Markdown.</p>
 
 <h2>Skąd ranking</h2>
 <p class="muted small">Score to nie gwiazdki listy, tylko: zgoda niezależnych kuratorów
@@ -98,16 +126,19 @@ i nic nie zapisuje.</p>
 <h2>Dane i eksport</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
 ./awesome stats             # co jest w bazie
-./awesome validate         # sprawdź martwe linki (--limit N, --non-github)
-./awesome export json      # data/tools.json
-./awesome export csv       # data/tools.csv
-./awesome web 5001         # Flask UI
+./awesome validate --limit 100   # sprawdź martwe linki
+./awesome export json --out tools.json   # do pliku, który podasz
+./awesome export csv  --out tools.csv
+./awesome web              # Flask UI (port wypisuje na ekranie)
 </pre>
+<p class="muted small">Flaska nie musisz instalować ręcznie — przy pierwszym
+<code>./awesome web</code> program tworzy <code>venv</code> i instaluje
+<code>requirements.txt</code>, wypisując każdy krok.</p>
 
 <h2>Limity, o których trzeba wiedzieć</h2>
 <ul class="muted small">
   <li>Wyszukiwarka GitHuba zwraca maks. <b>1000 wyników na zapytanie</b> — dlatego
-      <code>download.sh --wide</code> używa kilku zapytań i skaluje wyniki.</li>
+      <code>./awesome download</code> używa kilku zapytań i skaluje wyniki.</li>
   <li>Prawdziwy język narzędzia znamy tylko tam, gdzie doszedł <code>./awesome enrich</code>;
       bez tego <code>lang</code> bywa <code>?</code>.</li>
   <li>Linki poza GitHubem sprawdzamy tylko jawnie: <code>./awesome validate --non-github --limit 500</code>.</li>
@@ -116,6 +147,9 @@ i nic nie zapisuje.</p>
 <h2>Bezpieczeństwo</h2>
 <p class="muted small">Sygnały przy repozytoriach (archiwalne, dawno nieaktualizowane)
 to wskazówki do sprawdzenia, a nie etykieta bezpieczeństwa. Zawsze przejrzyj kod
-i release'y przed instalacją. Instalacja z weba to wyłącznie `git clone` do
-katalogu narzędzi — nie jest to terminal.</p>
+i release'y przed instalacją. Instalacja z weba to wyłącznie <code>git clone</code>
+do katalogu narzędzi — nie jest to terminal.</p>
+<p class="muted small">README jest jednym źródłem prawdy: opisuje też skąd biorą się
+listy, dlaczego nic z cudzego repozytorium nie jest wykonywane i jedyne miejsce,
+gdzie opis z obcej listy trafia do kontekstu modelu (MCP).</p>
 {% endblock %}

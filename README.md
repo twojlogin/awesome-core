@@ -413,7 +413,7 @@ cli/awesome_cli.py   # CLI
 cli/tui.py           # TUI (curses)
 web/app.py           # Flask UI
 web/templates/       # szablony Jinja2
-tests/smoke_test.py  # 87 testy (CI)
+tests/smoke_test.py  # 89 testy (CI)
 ```
 
 </details>

@@ -9,7 +9,7 @@ Katalog narzędzi z awesome list — skala i liczby są w README, sekcja
 „Co jest w środku". **Nie powielaj ich tutaj**: zestarzały się już raz
 (1 026 → 1 032 list) i pilnuje tego test, nie komentarz.
 Baza `data/awesome.db` jest generowana, nigdy nie w repo. Kod: ~8,8k linii
-Pythona, 87 testy, jedna zależność zewnętrzna (flask, tylko web UI).
+Pythona, 89 testy, jedna zależność zewnętrzna (flask, tylko web UI).
 
 Weryfikacja stanu: `./awesome status`. Nic nie działa samo — brak cronów,
 daemonów i procesów w tle.
@@ -76,7 +76,7 @@ artykuły i filmy, których gwiazdek nie da się mieć.
 ## Jak sprawdzić, czy nie zepsuliśmy
 
 ```bash
-python3 tests/smoke_test.py      # 87 testy, ~35 s
+python3 tests/smoke_test.py      # 89 testy, ~35 s
 python3 -m flake8 --select=E9,F63,F7,F82 --max-line-length=120 core/ cli/ web/ tests/
 ./awesome status                 # stan danych i co ewentualnie odświeżyć
 ./awesome untrusted              # skan opisów pod prompt injection
