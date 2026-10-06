@@ -18,6 +18,7 @@ from core import aliases, langmap, md, parser, scoring  # noqa: E402
 from core.builder import build  # noqa: E402
 from core.database import AwesomeDB  # noqa: E402
 from core import status as status_mod  # noqa: E402
+from core.shortlist import Shortlist  # noqa: E402
 from core.tools_db import ToolsDB  # noqa: E402
 
 
@@ -261,6 +262,26 @@ class TestDatabase(unittest.TestCase):
         )
         self.assertEqual(again["tools"], self.summary["tools"])
         self.assertEqual(again["mentions"], self.summary["mentions"])
+
+    def test_shortlist_roundtrip(self):
+        shortlist = Shortlist(self.data_dir)
+        nmap = self.tools.tool_by_name("nmap")
+        self.assertEqual(shortlist.add(nmap, "notatka")[0], "added")
+        self.assertTrue(shortlist.has(nmap["url_norm"]))
+        self.assertEqual(shortlist.add(nmap, "nowa notatka")[0], "updated")
+        entries = shortlist.items()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["note"], "nowa notatka")
+        markdown = shortlist.to_markdown(title="Test")
+        self.assertIn("# Test", markdown)
+        self.assertIn("[nmap](https://github.com/nmap/nmap)", markdown)
+        self.assertTrue(
+            any(line.startswith("## ") for line in markdown.split("\n")),
+            "markdown musi mieć sekcję grupującą",
+        )
+        self.assertEqual(shortlist.count(), 1)
+        self.assertTrue(shortlist.remove(nmap["url_norm"]))
+        self.assertEqual(shortlist.count(), 0)
 
     def test_thread_safety(self):
         """Flask/TUI używają wielu wątków — połączenie musi być per-wątek."""

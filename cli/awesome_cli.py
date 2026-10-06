@@ -41,6 +41,11 @@ Zarządzanie danymi:
   awesome validate [--limit N]        — sprawdź martwe linki
   awesome export json|csv [ścieżka]  — eksport bazy
 
+Twoja własna lista:
+  awesome shortlist add nmap --note   — włóż narzędzie
+  awesome shortlist                   — co masz na liście
+  awesome shortlist emit --out moja.md — Markdown do wklejenia w listę
+
 Inne:
   awesome tui                         — interfejs terminalowy (curses)
   awesome web [port]                  — uruchom Flask
@@ -491,6 +496,103 @@ def _flag_int(args, name, default=None):
     return default
 
 
+def _flag_value(args, name, stop_at_flags=True):
+    """Wartość po --name; przy stop_at_flags kończy na kolejnym --flag."""
+    if name not in args:
+        return None
+    index = args.index(name)
+    values = []
+    for item in args[index + 1:]:
+        if stop_at_flags and item.startswith("--"):
+            break
+        values.append(item)
+    return " ".join(values) or None
+
+
+def cmd_shortlist(tools_db, args):
+    """Twoja własna lista: add / rm / list / emit."""
+    from core.shortlist import Shortlist
+
+    shortlist = Shortlist(BASE_DIR / "data")
+    action = args[0] if args else "list"
+    rest = args[1:]
+
+    if action in {"list", "show", ""}:
+        entries = shortlist.items()
+        if not entries:
+            print("\nTwoja lista jest pusta. Dodaj narzędzie:\n"
+                  "  ./awesome shortlist add nmap --note \"do skanowania\"")
+            return
+        print(f"\nTwoja lista ({len(entries)}):\n")
+        for index, entry in enumerate(entries, 1):
+            tool = entry.get("tool") or {}
+            name = tool.get("name") or entry["url_norm"]
+            stars = tool.get("tool_stars") or 0
+            lang = tool.get("lang") or "?"
+            flag = "" if entry["in_db"] else "  (nie ma już w bazie)"
+            note = f"\n      notatka: {entry['note']}" if entry["note"] else ""
+            print(f"  {index:2d}. {name}{flag}")
+            print(f"      {lang} · ⭐{stars:,} · dodane {entry['added_at'][:10]}{note}")
+            print(f"      {tool.get('url') or entry['url_norm']}")
+
+    elif action in {"add", "keep"}:
+        if not rest:
+            print("Użycie: awesome shortlist add <nazwa|url> [--notatka \"...\"]")
+            return
+        needle = rest[0]
+        note = _flag_value(rest, "--note") or ""
+        tool = tools_db.get_tool_by_url(needle) or tools_db.tool_by_name(needle)
+        if not tool:
+            print(f"Nie znaleziono narzędzia: {needle}")
+            print("Podaj nazwę albo URL, np. ./awesome shortlist add nmap")
+            return
+        status, message = shortlist.add(tool, note)
+        print(f"{message}: {tool['name']}")
+        if status == "added":
+            print(f"  {tool.get('url')}")
+            print(f"  lista ma już {shortlist.count()} pozycji — "
+                  "`awesome shortlist emit` zrobi z tego Markdown")
+
+    elif action in {"rm", "remove", "del"}:
+        if not rest:
+            print("Użycie: awesome shortlist rm <nazwa|url>")
+            return
+        needle = rest[0]
+        tool = tools_db.get_tool_by_url(needle) or tools_db.tool_by_name(needle)
+        identity = tool["url_norm"] if tool else needle
+        if shortlist.remove(identity):
+            print(f"Usunięto z twojej listy: {tool['name'] if tool else needle}")
+        else:
+            print("Nie było tego na liście.")
+
+    elif action in {"emit", "md", "markdown"}:
+        title = _flag_value(rest, "--title") or "Moja lista narzędzi"
+        out = None
+        if "--out" in rest:
+            out = rest[rest.index("--out") + 1]
+            if out.endswith(".json"):
+                text = shortlist.to_json(out)
+                print(f"Zapisano JSON: {out}")
+                return
+        group_by = "lang"
+        if "--group" in rest:
+            group_by = rest[rest.index("--group") + 1]
+        text = shortlist.to_markdown(title=title, out_path=out, group_by=group_by)
+        if out:
+            print(f"Zapisano Markdown: {out}")
+            print("Wklej tę treść do swojej awesome list na GitHubie.")
+        else:
+            print()
+            print(text)
+
+    else:
+        print("Użycie: awesome shortlist [list|add|rm|emit] [opcje]")
+        print("  --note \"...\"   notatka przy add")
+        print("  --out plik.md      zapisz zamiast wypisywać")
+        print("  --group lang|platform|domain|section")
+        print("  --title \"Moja lista\"")
+
+
 def cmd_status():
     from core import status as status_mod
 
@@ -824,6 +926,9 @@ def main():
         cmd_ask(tools_db, " ".join(args))
     elif cmd in {"start", "start-here", "pierwszy-raz"}:
         sys.exit(cmd_start(args) or 0)
+    elif cmd in {"shortlist", "moja-lista"}:
+        tools_db, _, _ = dbs()
+        cmd_shortlist(tools_db, args)
     elif cmd in {"status", "stan"}:
         cmd_status()
     elif cmd in {"refresh", "odswiez"}:

@@ -20,6 +20,7 @@ from core import md, status as status_mod, store  # noqa: E402
 from core.ai_librarian import recommend as ai_recommend  # noqa: E402
 from core.curator import ToolCurator  # noqa: E402
 from core.database import AwesomeDB  # noqa: E402
+from core.shortlist import Shortlist  # noqa: E402
 from core.tools_db import ToolsDB  # noqa: E402
 from core.trust import assess_repo  # noqa: E402
 
@@ -45,6 +46,14 @@ _readme_cache = {}
 tools_db = None
 repo_db = None
 curator = None
+shortlist = None
+
+
+def get_shortlist():
+    global shortlist
+    if shortlist is None:
+        shortlist = Shortlist(BASE_DIR / "data")
+    return shortlist
 
 
 def dbs():
@@ -275,6 +284,7 @@ def tool_detail(needle):
             )
     return render_template(
         "tool.html",
+        kept=get_shortlist().has(tool["url_norm"]),
         tool=tool,
         similar=similar,
         install=install,
@@ -318,6 +328,46 @@ def readme_raw(name):
     if not text:
         abort(404)
     return render_template("raw.html", name=name, text=text)
+
+
+@app.route("/shortlist")
+def shortlist_page():
+    entries = get_shortlist().items()
+    if request.args.get("markdown") == "1":
+        text = get_shortlist().to_markdown(
+            title=_first_arg(request.args, "title", "Moja lista narzędzi")
+        )
+        return render_template("shortlist.html", entries=entries, markdown=text)
+    return render_template(
+        "shortlist.html", entries=entries,
+        markdown=_first_arg(request.args, "markdown", ""),
+    )
+
+
+def _first_arg(args, name, default=""):
+    value = args.get(name)
+    return value.strip() if value else default
+
+
+@app.route("/shortlist/add", methods=["POST"])
+def shortlist_add():
+    tools, _, _ = dbs()
+    needle = request.form.get("tool", "").strip()
+    note = request.form.get("note", "").strip()
+    tool = tools.get_tool_by_url(needle) or tools.tool_by_name(needle)
+    if not tool:
+        flash(f"Nie znaleziono narzędzia: {needle}", "error")
+        return redirect(url_for("index"))
+    _status, message = get_shortlist().add(tool, note)
+    flash(f"{message}: {tool['name']}", "success")
+    return redirect(request.form.get("back") or f"/tool/{tool['url_norm']}")
+
+
+@app.route("/shortlist/remove", methods=["POST"])
+def shortlist_remove():
+    get_shortlist().remove(request.form.get("url_norm", "").strip())
+    flash("Usunięto z twojej listy", "success")
+    return redirect(url_for("shortlist_page"))
 
 
 @app.route("/mentions/<path:needle>")

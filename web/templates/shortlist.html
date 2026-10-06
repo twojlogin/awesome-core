@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Moja lista — Awesome Core{% endblock %}
+{% block content %}
+<div class="breadcrumb"><a href="/">start</a> / moja lista</div>
+<div class="row" style="margin-bottom:0.8rem;">
+    <h2 style="margin:0;">Moja lista ({{ entries|length }})</h2>
+    <a class="tag" href="?markdown=1">Markdown do wklejenia</a>
+    <a class="tag" href="?markdown=1&title=Moja%20awesome%20lista">…z własnym tytułem</a>
+    <a class="tag" href="/search">Dorzucaj narzędzia</a>
+</div>
+
+{% if markdown %}
+<p class="muted small">Wklej to do swojej listy na GitHubie — linki, gwiazdki i liczba list
+   są z bazy, więc od razu widać, co jest popularne.</p>
+<pre class="raw" id="md-out">{{ markdown }}</pre>
+<button onclick="navigator.clipboard.writeText(document.getElementById('md-out').textContent).then(()=>alert('Skopiowane'))">📋 Kopiuj</button>
+{% endif %}
+
+{% if not entries %}
+<div class="panel">
+    <p class="muted">Lista jest pusta. W trakcie przeglądania kliknij <b>☆ Do mojej listy</b>
+       na stronie narzędzia (możesz dodać notatkę), a potem wróć tutaj po Markdown.</p>
+    <p class="small dim">Z terminala: <code>./awesome shortlist add nmap --note "notatka"</code></p>
+</div>
+{% endif %}
+
+{% for entry in entries %}
+{% set tool = entry.tool %}
+<div class="tool">
+    <div class="row">
+        {% if entry.in_db %}
+        <a href="/tool/{{ entry.url_norm }}" class="name">{{ tool.name }}</a>
+        {% else %}
+        <span class="name">{{ entry.url_norm }}</span>
+        <span class="bad small">nie ma już w bazie</span>
+        {% endif %}
+        {% if tool.lang and tool.lang != '?' %}<span class="badge">{{ tool.lang }}</span>{% endif %}
+        {% if tool.tool_stars %}<span class="score">⭐ {{ "{:,}".format(tool.tool_stars) }}</span>{% endif %}
+        {% if tool.lists_count > 1 %}<span class="badge good">{{ tool.lists_count }}×</span>{% endif %}
+        <form action="/shortlist/remove" method="post" style="margin-left:auto;">
+            <input type="hidden" name="url_norm" value="{{ entry.url_norm }}">
+            <button class="ghost" type="submit">Usuń</button>
+        </form>
+    </div>
+    {% if entry.note %}<div class="desc">📝 {{ entry.note }}</div>{% endif %}
+    <div class="meta">{{ tool.url if entry.in_db else entry.url_norm }} · dodane {{ entry.added_at[:10] }}</div>
+</div>
+{% endfor %}
+{% endblock %}

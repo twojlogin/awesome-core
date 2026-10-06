@@ -98,6 +98,12 @@ CREATE TABLE IF NOT EXISTS tool_mentions (
 
 CREATE INDEX IF NOT EXISTS idx_mentions_repo ON tool_mentions(source_repo);
 
+CREATE TABLE IF NOT EXISTS shortlist (
+    url_norm TEXT PRIMARY KEY,
+    added_at TEXT NOT NULL DEFAULT '',
+    note     TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''

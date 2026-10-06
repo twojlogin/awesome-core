@@ -24,6 +24,13 @@
             <button name="action" value="install" type="submit"
                     onclick="return confirm('Zainstalować {{ tool.name }}?');">▶ Zainstaluj</button>
         </form>
+        <form action="/shortlist/add" method="post" style="display:inline;">
+            <input type="hidden" name="tool" value="{{ tool.url_norm }}">
+            <input type="text" name="note" placeholder="notatka (opcjonalnie)" size="18">
+            <button type="submit" title="Włóż do własnej listy i wygeneruj Markdown">
+                {% if kept %}★ Jest na mojej liście{% else %}☆ Do mojej listy{% endif %}
+            </button>
+        </form>
     </div>
     <div class="small dim" style="margin-top:0.6rem;">
         sekcja: <a href="/section/{{ tool.section }}">{{ tool.section }}</a>

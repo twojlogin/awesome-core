@@ -31,6 +31,7 @@ HELP = [
     ("g", "tylko ukryte perełki"),
     ("u", "tylko niedoceniane"),
     ("Enter", "szczegóły"),
+    ("k", "do mojej listy"),
     ("i", "instaluj"),
     ("?", "pomoc"),
     ("q", "wyjście"),
@@ -329,6 +330,9 @@ def _run(stdscr):
             state.refresh()
         elif key in ("\n", "\r", curses.KEY_ENTER):
             state.mode = "detail"
+        elif isinstance(key, str) and key == "k":
+            tool = state.current()
+            state.status = _keep(tool) if tool else "brak zaznaczonego narzędzia"
         elif isinstance(key, str) and key == "i":
             tool = state.current()
             if not tool:
@@ -339,6 +343,14 @@ def _run(stdscr):
             _help(stdscr, rows, height)
         elif isinstance(key, str) and key in ("q", "Q"):
             state.running = False
+
+
+def _keep(tool):
+    from core.shortlist import Shortlist
+
+    base = Path(__file__).parent.parent / "data"
+    status, message = Shortlist(base).add(tool)
+    return f"{message}: {tool['name']}" if status != "error" else message
 
 
 def _install(tool):
