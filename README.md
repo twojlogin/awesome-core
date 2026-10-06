@@ -60,6 +60,19 @@ sudo apt install python3 jq curl        # albo: sudo dnf install python3 jq curl
 gh auth login                          # zaloguj się do GitHuba (jednorazowo)
 ```
 
+**A Windows?** Działa, ale musisz mieć powłokę z `bash` (najprościej
+[Git Bash](https://git-scm.com/downloads), wbudowany w Git for Windows) albo
+WSL. Sam `awesome` to skrypt Pythona, ale `download.sh` jest skryptem shella —
+w PowerShellu samo `./awesome` zadziała, ale samo `./download.sh` nie.
+
+W PowerShellu odpowiedniki komend:
+
+```powershell
+gh auth login                 # potem reszta jak w Linuxie
+.\venv\Scripts\Activate.ps1 # aktywacja venv
+.\awesome web
+```
+
 Reszta (Flask do web UI) instaluje się sama:
 
 ```bash
@@ -81,10 +94,24 @@ Program sprawdza, czy masz wszystko, potem:
 
 | Krok | Co robi | Ile trwa |
 |---|---|---|
-| 1 | pobiera README awesome list z GitHuba (pomija to, co już masz) | 5–15 min |
+| 1 | pobiera README awesome list z GitHuba (pomija to, co już masz) | 10–25 min |
 | 2 | wyciąga z nich narzędzia do bazy | ~2 min |
 | 3 | dociąga gwiazdki i języki list | ~1 min |
 | 4 | gotowe | — |
+
+**Uwaga, uczciwie:** `start` nie odpytuje GitHuba o repozytoria samych
+narzędzi. Ranking od razu działa (na zgodzie kuratorów), ale „★" przy
+narzędziu to na razie szacunek z listy, nie prawdziwa liczba. Jedna komenda
+to naprawia:
+
+```bash
+./awesome enrich      # ~30–60 min, odpytuje ~35 tys. repozytoriów
+./awesome build       # ~2 min, żeby gwiazdki wsiąkły do rankingu
+./awesome status      # pokaże, zostało coś do odpytania
+```
+
+Robisz to raz. Przerwać można w każdej chwili (Ctrl+C) — postęp jest zapisywany
+i odpalanie komendy drugi raz jedzie dalej.
 
 Jeśli masz mało czasu, krok 1 możesz pominąć i nadrobić później:
 

@@ -415,6 +415,30 @@ class TestCliIsForgiving(unittest.TestCase):
             self.assertFalse((Path(tmp) / "--out").exists(),
                              "powstał plik '--out' zamiast podanej ścieżki")
 
+    def test_web_without_flask_explains_instead_of_crashing(self):
+        """Brak flask to nie traceback, tylko instrukcja — inaczej wniosek
+        "program się nie uruchamia" i koniec wiary w program."""
+        import io
+        import contextlib
+
+        from cli import awesome_cli
+
+        saved = sys.modules.get("flask")
+        sys.modules["flask"] = None          # import rzuci ImportError
+        try:
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                awesome_cli.cmd_web()
+            out = buffer.getvalue()
+        finally:
+            if saved is None:
+                del sys.modules["flask"]
+            else:
+                sys.modules["flask"] = saved
+        self.assertIn("pip install flask", out)
+        self.assertIn("PowerShell", out)
+        self.assertNotIn("Traceback", out)
+
     def test_help_and_unknown_command_are_clean(self):
         import subprocess
 

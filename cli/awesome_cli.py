@@ -414,7 +414,28 @@ def cmd_ask(tools_db, question):
     print(f"[via {result['provider']}]")
 
 
+FLASK_HINT = r"""Web UI potrzebuje Flask, a w tej Pythonie go nie ma.
+
+  python3 -m venv venv
+  source venv/bin/activate
+  pip install flask
+
+PowerShell:
+  python -m venv venv
+  .\venv\Scripts\Activate.ps1
+  pip install flask
+
+Potem: ./awesome web"""
+
+
 def cmd_web(port=None):
+    # Bez tego ktoś bez flask dostaje ModuleNotFoundError i traceback,
+    # czyli wniosek "ten program się nie uruchamia".
+    try:
+        import flask  # noqa: F401
+    except ImportError:
+        print(FLASK_HINT)
+        return
     sys.path.insert(0, str(BASE_DIR / "web"))
     from app import app
 
