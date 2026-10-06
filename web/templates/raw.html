@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Raw {{ name }}{% endblock %}
+{% block content %}
+<div class="breadcrumb"><a href="/repo/{{ name }}">{{ name }}</a> / surowy markdown</div>
+<pre class="raw">{{ text }}</pre>
+{% endblock %}

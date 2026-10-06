@@ -1,0 +1,21 @@
+<div class="tool">
+    <div class="row">
+        <a href="/tool/{{ tool.url_norm }}" class="name">{{ tool.name }}</a>
+        {% if tool.tool_stars %}<span class="score">★ {{ "{:,}".format(tool.tool_stars) }}</span>
+        {% elif tool.source_stars %}<span class="score">★ {{ "{:,}".format(tool.source_stars) }} <span class="dim">(lista)</span></span>{% endif %}
+        {% if tool.lists_count > 1 %}<span class="badge good" title="w ilu niezależnych listach">{{ tool.lists_count }}×</span>{% endif %}
+        {% if tool.lang and tool.lang != '?' %}<a class="tag" href="/lang/{{ tool.lang }}">{{ tool.lang }}</a>{% endif %}
+        {% for platform in (tool.platforms or [])[:2] %}<a class="tag" href="/os/{{ platform }}">{{ platform }}</a>{% endfor %}
+        {% for domain in (tool.domains or [])[:2] %}<a class="tag" href="/domain/{{ domain }}">{{ domain }}</a>{% endfor %}
+        <span class="dim small">score {{ "%.0f"|format(tool.score) }}</span>
+        {% if tool.alive is sameas false %}<span class="bad small" title="{{ tool.alive_reason }}">✗ martwy</span>
+        {% elif tool.alive is sameas true %}<span class="good small">✓ żywy</span>{% endif %}
+    </div>
+    {% if tool.description %}<div class="desc">{{ tool.description[:220] }}</div>{% endif %}
+    <div class="meta">
+        {% if tool.section %}<a href="/section/{{ tool.section }}">{{ tool.section }}</a>{% endif %}
+        {% if tool.source_repo %}· z <a href="/list/{{ tool.source_repo }}">{{ tool.source_repo }}</a>{% endif %}
+        {% if tool.install_method %}· {{ tool.install_method }}{% endif %}
+        {% if tool.underrated and tool.underrated > 30 %}· <a href="/underrated">niedoceniane</a>{% endif %}
+    </div>
+</div>

@@ -1,34 +1,35 @@
 {% extends "base.html" %}
-{% block title %}{{ title }} - Awesome Tools{% endblock %}
+{% block title %}{{ title }} — Awesome Core{% endblock %}
 {% block content %}
-<h2>{{ title }}</h2>
-<p style="color: #8b949e; margin-bottom: 1rem;">{{ subtitle }} | <a href="/">Wszystkie listy</a></p>
+<div class="breadcrumb"><a href="/">start</a> / <a href="/lists">listy</a> / {{ title }}</div>
+<h2 style="margin-top:0;">{{ title }}</h2>
 
-{% if items %}
-<div style="margin-bottom: 1rem; color: #8b949e;">
-    {{ items|length }} narzędzi
-    {% if items[0].source_stars is defined %}
-    | Źródła z {{ items|selectattr('source_stars', 'gt', 0)|list|length }} list ze gwiazdkami
-    {% endif %}
-</div>
-{% endif %}
+{% if stats %}
+<p class="muted small">
+  {{ "{:,}".format(stats.count) }} narzędzi · {{ "{:,}".format(stats.stars) }}★ ·
+  jakość listy {{ "%.2f"|format(stats.quality) }} ·
+  <a href="/repo/{{ title }}">README listy</a>
+</p>
+{% for tool in items %}{% include "partials/tool_row.html" %}{% endfor %}
 
-{% for tool in items %}
-{% if not tool.source_stars is defined or tool.source_stars >= 10 %}
+{% else %}
+<p class="muted small"><a href="/repo/{{ title }}">README listy</a> · <a href="/lists">wszystkie listy</a></p>
+{% for repo in items %}
 <div class="tool">
-    <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <a href="/tool/{{ tool.url }}" class="name">{{ tool.name }}</a>
-        {% if tool.source_stars is defined and tool.source_stars > 0 %}
-        <span style="color: #f0c040; font-size: 0.85em;">⭐ {{ "{:,}".format(tool.source_stars) }}</span>
-        {% endif %}
+    <div class="row">
+        <a href="/repo/{{ repo.full_name }}" class="name">{{ repo.full_name }}</a>
+        {% if repo.stars %}<span class="score">★ {{ "{:,}".format(repo.stars) }}</span>{% endif %}
+        {% if repo.unique_tool_count %}<span class="badge">{{ repo.unique_tool_count }} narzędzi</span>{% endif %}
+        {% if repo.quality is defined %}<span class="badge" title="jakość listy">jakość {{ "%.2f"|format(repo.quality) }}</span>{% endif %}
+        {% if repo.archived %}<span class="badge bad">archiwalne</span>{% endif %}
     </div>
-    {% if tool.description %}<div class="desc">{{ tool.description[:200] }}</div>{% endif %}
+    {% if repo.description %}<div class="desc">{{ repo.description[:200] }}</div>{% endif %}
     <div class="meta">
-        {% if tool.section %}<a href="/section/{{ tool.section }}" style="color: #58a6ff;">{{ tool.section }}</a>{% endif %}
-        {% if tool.subsection %} > {{ tool.subsection }}{% endif %}
-        {% if tool.source_repo %}<span style="color: #6e7681;"> | {{ tool.source_repo }}</span>{% endif %}
+        {% if repo.language %}<a href="/lang/{{ repo.language }}">{{ repo.language }}</a>{% endif %}
+        {% for topic in (repo.topics or '').split(';')[:6] %}<a class="tag" href="/search?q={{ topic }}">{{ topic }}</a>{% endfor %}
+        {% if repo.pushed_at %}<span class="dim">push {{ repo.pushed_at[:10] }}</span>{% endif %}
     </div>
 </div>
-{% endif %}
 {% endfor %}
+{% endif %}
 {% endblock %}

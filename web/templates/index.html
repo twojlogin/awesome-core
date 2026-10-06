@@ -1,28 +1,42 @@
 {% extends "base.html" %}
-{% block title %}Awesome Tools{% endblock %}
+{% block title %}Awesome Core — narzędzia z awesome list{% endblock %}
 {% block content %}
-<div style="background: #161b22; border: 1px solid #30363d; padding: 1rem; margin-bottom: 1.5rem;">
-    <h2 style="margin: 0 0 0.5rem 0;">{{ stats.total }} narzędzi | {{ stats.lists }} awesome list</h2>
-    <form action="/search" method="get">
-        <input type="text" name="q" placeholder="vpn, python, osint, docker...">
+<div class="panel">
+    <h2 style="margin-top:0;">{{ "{:,}".format(stats.total) }} narzędzi · {{ stats.lists }} list · {{ stats.langs }} języków</h2>
+    <form action="/search" method="get" class="row">
+        <input type="text" name="q" placeholder="vpn, powershell, osint, windows, docker..." style="flex:1;">
         <button type="submit">Szukaj</button>
     </form>
-</div>
-
-<h2>Top listy (wg gwiazdek)</h2>
-<div style="margin-bottom: 1.5rem;">
-    {% for name, count in top_lists %}
-    <div class="tool">
-        <a href="/list/{{ name }}" class="name">{{ name }}</a>
-        <span style="color: #3fb950; margin-left: 0.5rem;">{{ count }} narzędzi</span>
+    <div class="small dim" style="margin-top:0.5rem;">
+        {{ "{:,}".format(stats.with_desc) }} z opisem · ranking = zgoda niezależnych kuratorów + jakość listy + własne gwiazdki narzędzia
     </div>
-    {% endfor %}
 </div>
 
-<h2>Sekcje</h2>
-<div style="display: flex; flex-wrap: wrap; gap: 0.3rem;">
-    {% for name, count in top_sections %}
-    <a href="/section/{{ name }}" class="tag">{{ name }} <span style="color: #3fb950;">{{ count }}</span></a>
-    {% endfor %}
+<div class="grid">
+<div>
+    <h2>Najlepsze listy wg jakości</h2>
+    <table class="data">
+        <tr><th>lista</th><th>★</th><th>jakość</th><th>narzędzi</th></tr>
+        {% for row in best_lists %}
+        <tr>
+            <td><a href="/list/{{ row.full_name }}">{{ row.full_name }}</a></td>
+            <td>{{ "{:,}".format(row.stars) }}</td>
+            <td class="score">{{ "%.2f"|format(row.quality) }}</td>
+            <td>{{ row.unique_tool_count }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h2 style="margin-top:1.5rem;">Największe listy</h2>
+    <table class="data">
+        {% for name, count in top_lists %}
+        <tr><td><a href="/list/{{ name }}">{{ name }}</a></td><td>{{ count }} narzędzi</td></tr>
+        {% endfor %}
+    </table>
+</div>
+
+<div>
+    {% include "partials/facets.html" %}
+</div>
 </div>
 {% endblock %}

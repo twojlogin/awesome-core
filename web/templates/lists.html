@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Listy — Awesome Core{% endblock %}
+{% block content %}
+<h2 style="margin-top:0;">Listy awesome w bazie</h2>
+<p class="muted small">Jakość = opisy + unikalność + żywe linki + świeżość + rozmiar (0–1).</p>
+<table class="data">
+    <tr><th>lista</th><th>★</th><th>jakość</th><th>narzędzi</th><th>wzmianek</th><th>język listy</th></tr>
+    {% for row in best %}
+    <tr>
+        <td><a href="/list/{{ row.full_name }}">{{ row.full_name }}</a></td>
+        <td>{{ "{:,}".format(row.stars) }}</td>
+        <td class="score">{{ "%.2f"|format(row.quality) }}</td>
+        <td>{{ row.unique_tool_count }}</td>
+        <td>{{ row.tool_count }}</td>
+        <td class="dim">{{ row.language or '—' }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

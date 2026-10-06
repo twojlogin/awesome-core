@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ label }} — Awesome Core{% endblock %}
+{% block content %}
+<div class="breadcrumb"><a href="/">start</a> / {{ label }}</div>
+<div class="grid">
+<div>
+    <div class="row" style="margin-bottom:0.8rem;">
+        <h2 style="margin:0;">{{ label }} ({{ count }})</h2>
+        <span class="dim small">sortuj:
+            <a href="?sort=score">score</a> ·
+            <a href="?sort=consensus">zgoda</a> ·
+            <a href="?sort=stars">gwiazdki</a> ·
+            <a href="?sort=underrated">niedoceniane</a> ·
+            <a href="?sort=gem">perełki</a>
+        </span>
+    </div>
+    {% for tool in results %}{% include "partials/tool_row.html" %}{% endfor %}
+    {% if not results %}<p class="muted">Brak pozycji dla tego widoku.</p>{% endif %}
+</div>
+<div>{% include "partials/facets.html" %}</div>
+</div>
+{% endblock %}

@@ -1,43 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Dodaj repo - Awesome Tools{% endblock %}
+{% block title %}Dodaj — Awesome Core{% endblock %}
 {% block content %}
-<h2>Dodaj repozytorium</h2>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% if messages %}
-{% for category, message in messages %}
-<div style="padding: 0.5rem 1rem; margin-bottom: 1rem; border-radius: 4px; 
-    {% if category == 'error' %}background: #3d1f1f; border: 1px solid #f85149; color: #f85149;
-    {% else %}background: #1f3d1f; border: 1px solid #3fb950; color: #3fb950;{% endif %}">
-    {{ message }}
-</div>
-{% endfor %}
-{% endif %}
-{% endwith %}
-
-<div style="background: #161b22; border: 1px solid #30363d; padding: 1rem; margin-bottom: 1.5rem;">
-    <h3 style="margin: 0 0 0.5rem 0;">Dodaj z GitHub</h3>
-    <p style="color: #8b949e; margin: 0 0 0.5rem 0;">Wklej URL repozytorium z awesome listą:</p>
-    <form action="/add" method="get" style="display: flex; gap: 0.5rem;">
-        <input type="text" name="url" placeholder="https://github.com/owner/repo" style="flex: 1;">
-        <button type="submit">Dodaj</button>
+<h2 style="margin-top:0;">Dodaj listę awesome</h2>
+<div class="panel">
+    <form action="/add" method="get" class="row">
+        <input type="text" name="url" placeholder="https://github.com/owner/awesome-xyz" style="flex:1;">
+        <button type="submit">Pobierz README</button>
     </form>
 </div>
-
-<div style="background: #161b22; border: 1px solid #30363d; padding: 1rem; margin-bottom: 1.5rem;">
-    <h3 style="margin: 0 0 0.5rem 0;">Pobierz topic z GitHub</h3>
-    <p style="color: #8b949e; margin: 0 0 0.5rem 0;">Pobierz wszystkie listy z danym topicem:</p>
-    <form action="/add/topic" method="post" style="display: flex; gap: 0.5rem;">
-        <input type="text" name="topic" placeholder="awesome-python, awesome-osint..." style="flex: 1;">
-        <button type="submit">Pobierz</button>
+<div class="panel">
+    <h2 style="margin-top:0;">Pobierz cały topic</h2>
+    <form action="/add/topic" method="post" class="row">
+        <input type="text" name="topic" placeholder="awesome-list, osint, security-tools..." style="flex:1;">
+        <button type="submit">Pobierz teraz</button>
     </form>
+    <p class="small dim">Uwaga: wyszukiwarka GitHuba zwraca maks. 1000 wyników na zapytanie, dlatego skrypt używa kilku zapytań i scala wyniki.</p>
 </div>
-
-<div style="background: #161b22; border: 1px solid #30363d; padding: 1rem;">
-    <h3 style="margin: 0 0 0.5rem 0;">Przebuduj bazę</h3>
-    <p style="color: #8b949e; margin: 0 0 0.5rem 0;">Po dodaniu nowych list przebuduj indeks:</p>
-    <form action="/rebuild" method="post">
-        <button type="submit">Przebuduj</button>
-    </form>
+<div class="panel">
+    <h2 style="margin-top:0;">Odświeżanie bazy</h2>
+    <p class="small muted">Wszystko na żądanie: pobieranie → metadane list → metadane narzędzi → przebudowa.
+    Nic nie działa w tle.</p>
+    <a href="/refresh" class="tag" style="display:inline-block;padding:0.5rem 1rem;">Przejdź do odświeżania →</a>
 </div>
 {% endblock %}

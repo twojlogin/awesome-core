@@ -3,54 +3,125 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Awesome Tools{% endblock %}</title>
+    <title>{% block title %}Awesome Core{% endblock %}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: monospace; background: #0d1117; color: #c9d1d9; }
-        a { color: #58a6ff; text-decoration: none; }
+        :root {
+            --bg: #0d1117; --panel: #161b22; --panel2: #1c2128; --border: #30363d;
+            --text: #c9d1d9; --muted: #8b949e; --dim: #6e7681; --accent: #58a6ff;
+            --green: #3fb950; --yellow: #f0c040; --red: #f85149;
+        }
+        body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+               background: var(--bg); color: var(--text); line-height: 1.55; }
+        a { color: var(--accent); text-decoration: none; }
         a:hover { text-decoration: underline; }
-        nav { background: #161b22; padding: 0.8rem 2rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
-        .logo { font-weight: bold; font-size: 1.1rem; }
-        main { max-width: 960px; margin: 1.5rem auto; padding: 0 1.5rem; }
-        h2 { color: #58a6ff; margin-bottom: 0.8rem; font-size: 1.1rem; }
-        input[type=text] { background: #161b22; border: 1px solid #30363d; color: #c9d1d9; padding: 0.5rem 1rem; width: 75%; font-family: monospace; font-size: 1rem; }
-        button { background: #238636; border: none; color: white; padding: 0.5rem 1.5rem; cursor: pointer; font-family: monospace; font-size: 1rem; }
-        .tool { background: #161b22; border: 1px solid #30363d; padding: 0.6rem 0.8rem; margin-bottom: 0.2rem; }
-        .tool .name { font-weight: bold; }
-        .tool .desc { color: #8b949e; font-size: 0.85rem; margin-top: 0.2rem; }
-        .tool .meta { color: #484f58; font-size: 0.8rem; margin-top: 0.2rem; }
-        .tag { display: inline-block; background: #21262d; border: 1px solid #30363d; padding: 0.2rem 0.5rem; margin: 0.1rem; font-size: 0.85rem; }
-        .tag:hover { border-color: #58a6ff; }
+        nav { background: var(--panel); padding: 0.7rem 1.5rem; border-bottom: 1px solid var(--border);
+              display: flex; flex-wrap: wrap; gap: 0.8rem; justify-content: space-between; align-items: center; }
+        nav .logo { font-weight: bold; }
+        nav .links a { color: var(--muted); margin-left: 1rem; }
+        main { max-width: 1180px; margin: 1.2rem auto; padding: 0 1.2rem 3rem; }
+        h1, h2, h3 { color: var(--accent); margin: 0.9rem 0 0.5rem; }
+        h2 { font-size: 1.05rem; }
+        h3 { font-size: 0.98rem; }
+        input[type=text], select { background: var(--panel); border: 1px solid var(--border);
+               color: var(--text); padding: 0.45rem 0.7rem; font-family: inherit; font-size: 0.92rem; }
+        input[type=text] { width: 100%; }
+        button { background: var(--green); border: none; color: #04240f; padding: 0.45rem 1rem;
+               cursor: pointer; font-family: inherit; font-weight: bold; }
+        button.ghost { background: var(--panel2); border: 1px solid var(--border); color: var(--text); font-weight: normal; }
+        .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+        .grid { display: grid; grid-template-columns: 1fr 300px; gap: 1.2rem; align-items: start; }
+        @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+        .panel { background: var(--panel); border: 1px solid var(--border); padding: 0.8rem; margin-bottom: 1rem; }
+        .tool { background: var(--panel); border: 1px solid var(--border); padding: 0.55rem 0.75rem; margin-bottom: 0.3rem; }
+        .tool:hover { border-color: #484f58; }
+        .tool .name { font-weight: bold; color: var(--text); }
+        .tool .name:hover { color: var(--accent); }
+        .tool .desc { color: var(--muted); font-size: 0.85rem; margin-top: 0.2rem; }
+        .tool .meta { color: var(--dim); font-size: 0.78rem; margin-top: 0.25rem; display: flex; flex-wrap: wrap; gap: 0.6rem; }
+        .tag { display: inline-block; background: var(--panel2); border: 1px solid var(--border);
+               padding: 0.15rem 0.45rem; font-size: 0.78rem; color: var(--muted); }
+        a.tag:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
+        .facets a.tag { margin: 0.15rem 0.2rem 0.15rem 0; }
+        .score { color: var(--yellow); }
+        .good { color: var(--green); }
+        .bad { color: var(--red); }
+        .muted { color: var(--muted); }
+        .dim { color: var(--dim); }
+        .small { font-size: 0.8rem; }
+        .breadcrumb { color: var(--dim); font-size: 0.82rem; margin-bottom: 0.6rem; }
+        .badge { border: 1px solid var(--border); border-radius: 3px; padding: 0 0.35rem; font-size: 0.75rem; color: var(--muted); }
+
+        /* ── Markdown ─────────────────────────────── */
+        .md { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              font-size: 0.95rem; line-height: 1.65; color: var(--text); }
+        .md h1, .md h2, .md h3, .md h4 { font-family: inherit; color: var(--text); margin: 1.2em 0 0.5em; line-height: 1.3; }
+        .md h1 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+        .md h2 { font-size: 1.22rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+        .md h3 { font-size: 1.05rem; }
+        .md h4, .md h5, .md h6 { font-size: 0.95rem; color: var(--muted); }
+        .md .anchor { color: var(--dim); margin-left: 0.4rem; opacity: 0; font-size: 0.8em; }
+        .md h1:hover .anchor, .md h2:hover .anchor, .md h3:hover .anchor,
+        .md h4:hover .anchor, .md h5:hover .anchor, .md h6:hover .anchor { opacity: 1; }
+        .md p { margin: 0.6em 0; }
+        .md ul, .md ol { margin: 0.5em 0 0.5em 1.4em; }
+        .md li { margin: 0.2em 0; }
+        .md li p.md-cont { color: var(--muted); font-size: 0.92em; margin: 0.1em 0 0.1em 0.6em; }
+        .md code { background: #21262d; border: 1px solid var(--border); border-radius: 3px;
+                   padding: 0.1em 0.35em; font-size: 0.86em; }
+        .md pre { background: var(--panel2); border: 1px solid var(--border); border-radius: 4px;
+                  padding: 0.8rem; overflow-x: auto; }
+        .md pre code { background: none; border: none; padding: 0; font-size: 0.85rem; }
+        .md blockquote { border-left: 3px solid var(--border); color: var(--muted);
+                        margin: 0.6em 0; padding: 0.2em 0 0.2em 0.9em; }
+        .md table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 0.88rem; display: block; overflow-x: auto; }
+        .md th, .md td { border: 1px solid var(--border); padding: 0.35rem 0.6rem; text-align: left; vertical-align: top; }
+        .md th { background: var(--panel2); }
+        .md tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+        .md img { max-width: 100%; }
+        .md hr { border: none; border-top: 1px solid var(--border); margin: 1.2em 0; }
+        .md del { color: var(--dim); }
+        .md-toc-list { list-style: none; margin: 0; padding: 0; }
+        .md-toc { padding: 0.15rem 0; border-bottom: 1px solid rgba(48,54,61,0.5); font-size: 0.8rem; }
+        .md-toc a { float: right; color: var(--dim); margin-left: 0.4rem; }
+        .md-toc-1 { color: var(--text); font-weight: bold; }
+        .md-toc-2 { padding-left: 0.7rem; }
+        .md-toc-3 { padding-left: 1.4rem; color: var(--muted); }
+        .md-toc-4, .md-toc-5, .md-toc-6 { padding-left: 2rem; color: var(--dim); }
+        .md-box { max-height: 70vh; overflow-y: auto; padding: 1rem 1.2rem; }
+        pre.raw { background: var(--bg); border: 1px solid var(--border); padding: 1rem;
+                  max-height: 70vh; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.82rem; }
+        table.data { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        table.data th, table.data td { border: 1px solid var(--border); padding: 0.3rem 0.6rem; text-align: left; }
+        table.data th { background: var(--panel2); color: var(--accent); }
+        footer { max-width: 1180px; margin: 0 auto 2rem; padding: 0 1.2rem; text-align: center; color: var(--dim); font-size: 0.8rem; }
+        .flash { border: 1px solid var(--border); background: var(--panel2); padding: 0.5rem 0.8rem; margin-bottom: 0.8rem; }
+        .flash.error { border-color: var(--red); color: var(--red); }
+        .flash.success { border-color: var(--green); color: var(--green); }
     </style>
 </head>
 <body>
-    <nav>
-        <a href="/" class="logo">Awesome Tools</a>
-        <div>
-            <a href="/help" style="color: #8b949e; margin-right: 1rem;">Pomoc</a>
-            <a href="/installed" style="color: #8b949e; margin-right: 1rem;">Zainstalowane</a>
-            <a href="/add" style="color: #3fb950; margin-right: 1rem;">+ Dodaj</a>
-            <a href="/random" style="color: #8b949e;">Losowe</a>
-        </div>
-    </nav>
-    <main>{% block content %}{% endblock %}</main>
-    <footer style="max-width: 960px; margin: 2rem auto 1rem; padding: 0 1.5rem; text-align: center; color: #484f58;">
-        <button type="button" onclick="showCoffeeEgg()"
-                title="Postaw wirtualną kawę"
-                style="background: transparent; border: 1px solid #30363d; color: #8b949e; padding: 0.35rem 0.7rem; cursor: pointer; font-size: 1rem;">
-            ☕
-        </button>
-        <span style="margin-left: 0.4rem;">offline, ale z kofeiną</span>
-    </footer>
-    <script>
-    function showCoffeeEgg() {
-        var messages = [
-            'Kawa przyjęta. Tokeny oszczędzone. Projekt działa dalej ☕',
-            'Twoja kawa zasiliła lokalny indeks awesome-list.',
-            'Nie trzeba kupować kawy — wystarczy gwiazdka na GitHubie 😄'
-        ];
-        alert(messages[Math.floor(Math.random() * messages.length)]);
-    }
-    </script>
+<nav>
+    <a href="/" class="logo">⚡ Awesome Core</a>
+    <div class="links">
+        <a href="/lists">Listy</a>
+        <a href="/underrated">Niedoceniane</a>
+        <a href="/gems">Perełki</a>
+        <a href="/stats">Statystyki</a>
+        <a href="/refresh">Odśwież</a>
+        <a href="/installed">Zainstalowane</a>
+        <a href="/add">+ Dodaj</a>
+        <a href="/help">Pomoc</a>
+    </div>
+</nav>
+<main>
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+    <div class="flash {{ category }}">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+{% block content %}{% endblock %}
+</main>
+<footer>local-first · baza SQLite · zero sieci po pobraniu · <a href="/stats">stats</a></footer>
 </body>
 </html>

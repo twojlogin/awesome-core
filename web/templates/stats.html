@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Statystyki — Awesome Core{% endblock %}
+{% block content %}
+<h2 style="margin-top:0;">Statystyki bazy</h2>
+<div class="grid">
+<div>
+<table class="data">
+    <tr><th>narzędzia (unikalne URL)</th><td>{{ "{:,}".format(stats.total) }}</td></tr>
+    <tr><th>wzmianki w listach</th><td>{{ "{:,}".format(mentions) }}</td></tr>
+    <tr><th>listy</th><td>{{ repos.total }}</td></tr>
+    <tr><th>listy z metadanymi</th><td>{{ repos.with_meta }}</td></tr>
+    <tr><th>listy archiwalne</th><td>{{ repos.archived }}</td></tr>
+    <tr><th>narzędzia w &gt;1 liście (zgoda)</th><td>{{ "{:,}".format(consensus) }}</td></tr>
+    <tr><th>linki sprawdzone / żywe</th><td>{{ "{:,}".format(alive) }} z {{ "{:,}".format(stats.with_meta) }}</td></tr>
+    <tr><th>linki martwe</th><td>{{ "{:,}".format(stats.dead) }}</td></tr>
+    <tr><th>linki nie sprawdzone</th><td>{{ "{:,}".format(stats.unchecked) }}</td></tr>
+    <tr><th>z opisem</th><td>{{ "{:,}".format(stats.with_desc) }}</td></tr>
+    <tr><th>sekcje</th><td>{{ stats.sections }}</td></tr>
+</table>
+
+<h2>Najlepsze listy</h2>
+<table class="data">
+    <tr><th>lista</th><th>jakość</th><th>narzędzi</th></tr>
+    {% for row in best_lists %}
+    <tr><td><a href="/list/{{ row.full_name }}">{{ row.full_name }}</a></td><td class="score">{{ "%.2f"|format(row.quality) }}</td><td>{{ row.unique_tool_count }}</td></tr>
+    {% endfor %}
+</table>
+</div>
+<div>{% include "partials/facets.html" %}</div>
+</div>
+{% endblock %}

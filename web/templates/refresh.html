@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Odśwież dane — Awesome Core{% endblock %}
+{% block content %}
+<div class="breadcrumb"><a href="/">start</a> / odśwież dane</div>
+<h2 style="margin-top:0;">Odśwież dane</h2>
+<p class="muted small">Nic nie działa w tle — żadnych cronów, daemonów czy ukrytych
+procesów. Każdy krok uruchamiasz klikając i czekasz na wynik. W terminalu to samo:
+<code>./awesome refresh</code>.</p>
+
+<div class="panel">
+    <table class="data">
+        <tr><th>narzędzia (unikalne URL)</th><td>{{ "{:,}".format(status.tools or 0) }}</td></tr>
+        <tr><th>wzmianki w listach</th><td>{{ "{:,}".format(status.mentions or 0) }}</td></tr>
+        <tr><th>listy</th><td>{{ status.lists or 0 }} z {{ status.lists_total or 0 }} (README: {{ status.readmes or 0 }})</td></tr>
+        <tr><th>linki żywe / martwe</th><td>{{ "{:,}".format(status.alive or 0) }} / {{ "{:,}".format(status.dead or 0) }}</td></tr>
+        <tr><th>lista bez metadanych</th><td>{{ status.lists_without_meta or 0 }}</td></tr>
+        <tr><th>narzędzia bez własnych gwiazdek/języka</th><td>{{ "{:,}".format(status.tools_without_own_meta or 0) }} (repo_meta: {{ "{:,}".format(status.repo_meta or 0) }})</td></tr>
+        <tr><th>ostatni build</th><td>{{ status.last_build or '—' }}{% if status.last_build_age %} <span class="dim">({{ status.last_build_age }})</span>{% endif %}</td></tr>
+        <tr><th>ostatni backfill</th><td>{{ status.last_backfill or '—' }}{% if status.last_backfill_age %} <span class="dim">({{ status.last_backfill_age }})</span>{% endif %}</td></tr>
+        <tr><th>ostatni enrich</th><td>{{ status.last_enrich or '—' }}{% if status.last_enrich_age %} <span class="dim">({{ status.last_enrich_age }})</span>{% endif %}</td></tr>
+        <tr><th>rozmiar bazy</th><td>{{ status.db_size_mb }} MB</td></tr>
+    </table>
+</div>
+
+{% if not status.ready %}
+<div class="panel">
+    <p class="bad">Baza nie istnieje.</p>
+    <form method="post"><input type="hidden" name="step" value="build">
+        <button type="submit">Zbuduj bazę teraz</button></form>
+</div>
+{% else %}
+
+<div class="grid">
+<div>
+    <h2 style="margin-top:0;">1. Pobierz listy</h2>
+    <form method="post" class="panel row">
+        <input type="hidden" name="step" value="download">
+        <input type="text" name="topic" value="awesome-list" style="flex:1;">
+        <button type="submit">Pobierz brakujące README</button>
+    </form>
+    <p class="small dim">Wyszukiwarka GitHuba ma limit 1000 wyników na zapytanie, więc skrypt
+    używa kilku zapytań (<code>--wide</code>) i pomija to, co już jest lokalnie.</p>
+
+    <h2>2. Metadane list</h2>
+    <form method="post" class="panel">
+        <input type="hidden" name="step" value="backfill">
+        <button type="submit">Uzupełnij gwiazdki/języki list ({{ status.lists_without_meta }} brakuje)</button>
+    </form>
+
+    <h2>3. Metadane narzędzi</h2>
+    <form method="post" class="panel row">
+        <input type="hidden" name="step" value="enrich">
+        <input type="text" name="limit" value="20000" size="7" title="ile repozytoriów narzędzi sprawdzić (kolejność wg trafienia)">
+        <button type="submit">Sprawdź repozytoria narzędzi</button>
+    </form>
+    <p class="small dim">Jedno zapytanie GraphQL na 50 repozytoriów. 20 000 ≈ 30 min.
+    Kolejność według score, więc najpierw to, co naprawdę jest używane.</p>
+
+    <h2>4. Przebuduj bazę</h2>
+    <form method="post" class="panel">
+        <input type="hidden" name="step" value="build">
+        <button type="submit">Przebuduj SQLite z README ({{ status.readmes }} plików, ~2 min)</button>
+    </form>
+    <p class="small dim">Budowa jest jednorazowa i nadpisuje bazę. Wszystkie kroki po kolei:
+        <code>./awesome refresh</code> w terminalu.</p>
+</div>
+
+<div>
+    <div class="panel">
+        <h2 style="margin-top:0;">Kolejność po woli</h2>
+        {% for s in status.steps %}
+        <div style="margin-bottom:0.6rem;">
+            <strong>{{ s.label }}</strong><br>
+            <code class="small">{{ s.command }}</code>
+            {% if s.why %}<div class="small dim">{{ s.why }}</div>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+</div>
+{% endif %}
+
+{% if log is not none %}
+<h2>Ostatni krok: {{ step }}</h2>
+<div class="flash {{ 'success' if ok else 'error' }}">{{ message }} (kod {{ code }})</div>
+<pre class="raw">{{ log }}</pre>
+{% endif %}
+{% endblock %}

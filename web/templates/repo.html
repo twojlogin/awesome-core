@@ -1,68 +1,46 @@
 {% extends "base.html" %}
-{% block title %}{{ repo.full_name }} - Awesome Core{% endblock %}
+{% block title %}{{ repo.full_name }} — Awesome Core{% endblock %}
 {% block content %}
-<div style="background: #161b22; border: 1px solid #30363d; padding: 1rem; margin-bottom: 1rem;">
-    <h2 style="margin: 0 0 0.5rem 0;">{{ repo.full_name }}</h2>
-    <div style="color: #8b949e; font-size: 0.9rem;">
-        ⭐ {{ repo.stars or '?' }} | 🍴 {{ repo.forks or '?' }} | {{ repo.language or '?' }} | {{ repo.license or '?' }}
+<div class="breadcrumb">
+    <a href="/">start</a> / <a href="/lists">listy</a> / <a href="/list/{{ repo.full_name }}">{{ repo.full_name }}</a>
+</div>
+
+<div class="panel">
+    <div class="row">
+        <h1 style="margin:0; font-size:1.2rem;">{{ repo.full_name }}</h1>
+        <span class="score">★ {{ "{:,}".format(repo.stars) }}</span>
+        <span class="dim">forks {{ "{:,}".format(repo.forks) }}</span>
+        {% if repo.language %}<a class="tag" href="/lang/{{ repo.language }}">{{ repo.language }}</a>{% endif %}
+        {% if repo.license %}<span class="badge">{{ repo.license }}</span>{% endif %}
+        {% if repo.archived %}<span class="badge bad">archiwalne</span>{% endif %}
+        <span class="badge" title="jakość listy: opisy, unikalność, żywe linki, świeżość">jakość {{ "%.2f"|format(quality) }}</span>
+        <span class="badge">{{ tool_count }} narzędzi</span>
     </div>
-    <div style="margin-top: 0.5rem;">{{ repo.description or '' }}</div>
-    <div style="margin-top: 0.75rem; padding: 0.6rem; border: 1px solid #30363d;">
-        <strong>Kontrola sygnałów:</strong> {{ trust.status }}
-        {% if trust.info %}
-        <div style="margin-top: 0.4rem; color: #8b949e;">Informacje:</div>
-        <ul style="margin: 0.2rem 0 0 1.2rem; color: #8b949e;">
-            {% for item in trust.info %}<li>{{ item }}</li>{% endfor %}
-        </ul>
-        {% endif %}
-        {% if trust.attention %}
-        <div style="margin-top: 0.4rem; color: #f0c040;">Warto sprawdzić:</div>
-        <ul style="margin: 0.2rem 0 0 1.2rem; color: #f0c040;">
-            {% for item in trust.attention %}<li>{{ item }}</li>{% endfor %}
-        </ul>
-        {% endif %}
-        <small style="color: #8b949e;">To wskazówki do oceny, nie etykieta złośliwości.</small>
+    {% if repo.description %}<p class="muted" style="margin-top:0.5rem;">{{ repo.description }}</p>{% endif %}
+    <div class="small dim" style="margin-top:0.4rem;">
+        {% if repo.pushed_at %}ostatni push: {{ repo.pushed_at[:10] }} · {% endif %}
+        {% for topic in repo.topics.split(';')[:12] %}<a class="tag" href="/search?q={{ topic }}">{{ topic }}</a>{% endfor %}
     </div>
-    <div style="margin-top: 0.5rem; font-size: 0.85rem;">
-        <a href="{{ repo.html_url }}" target="_blank" style="color: #58a6ff;">GitHub ↗</a> |
-        {% if repo.categories %}<a href="/category/{{ repo.categories.split(';')[0] }}" style="color: #58a6ff;">{{ repo.categories.split(';')[0] }}</a>{% endif %} |
-        <a href="/random" style="color: #58a6ff;">Losowe</a> |
-        <a href="/" style="color: #58a6ff;">Menu</a>
+    <div class="row" style="margin-top:0.6rem;">
+        <a href="{{ repo.html_url }}" target="_blank" class="tag">GitHub ↗</a>
+        <a href="/list/{{ repo.full_name }}" class="tag">narzędzia z tej listy</a>
+        <a href="/readme/{{ repo.full_name }}" class="tag">surowy README</a>
+        {% if trust.attention %}<span class="small" style="color:var(--yellow);">⚠ {{ trust.attention|join('; ') }}</span>{% endif %}
     </div>
 </div>
 
-<div style="border: 1px solid #30363d; background: #0d1117;">
-    <div style="background: #161b22; padding: 0.5rem 1rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center;">
-        <span style="color: #58a6ff; font-weight: bold;">📄 README</span>
-        <div>
-            <button onclick="resize(-100)" style="background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 0.2rem 0.5rem; cursor: pointer;">-</button>
-            <button onclick="resize(100)" style="background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 0.2rem 0.5rem; cursor: pointer;">+</button>
-            <button onclick="openRaw()" style="background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 0.2rem 0.5rem; cursor: pointer;">Raw</button>
-        </div>
-    </div>
-    <div id="loading" style="padding: 2rem; color: #8b949e;">Ładowanie...</div>
-    <div id="readme" style="max-height: 500px; overflow-y: auto; padding: 1rem; display: none; font-size: 14px; line-height: 1.6;"></div>
-    <div id="error" style="padding: 2rem; color: #f85149; display: none;">Nie mozna zaladowac README</div>
-</div>
+{% if top_tools %}
+<h2>Najlepsze narzędzia z tej listy</h2>
+{% for tool in top_tools %}{% include "partials/tool_row.html" %}{% endfor %}
+{% endif %}
 
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script>
-var h = 500, raw = '';
-function resize(d) { h = Math.max(200, Math.min(3000, h + d)); document.getElementById('readme').style.maxHeight = h + 'px'; }
-function openRaw() { if (raw) window.open(raw, '_blank'); }
-document.addEventListener('DOMContentLoaded', function() {
-    var o = '{{ repo.full_name.split("/")[0] }}', n = '{{ repo.full_name.split("/")[1] }}';
-    var urls = ['https://raw.githubusercontent.com/'+o+'/'+n+'/main/README.md', 'https://raw.githubusercontent.com/'+o+'/'+n+'/master/README.md'];
-    function try_(i) {
-        if (i >= urls.length) { document.getElementById('loading').style.display='none'; document.getElementById('error').style.display='block'; return; }
-        fetch(urls[i]).then(function(r) { if (!r.ok) throw 0; return r.text(); }).then(function(t) {
-            document.getElementById('loading').style.display='none';
-            document.getElementById('readme').innerHTML = marked.parse(t);
-            document.getElementById('readme').style.display='block';
-            raw = urls[i];
-        }).catch(function() { try_(i+1); });
-    }
-    try_(0);
-});
-</script>
+<h2>README (lokalnie, wyrenderowane)</h2>
+{% if has_readme %}
+<div class="grid">
+    {% if toc %}<div class="panel" style="max-height:70vh; overflow:auto;"><h2 style="margin-top:0;">Spis treści</h2>{{ toc|safe }}</div>{% endif %}
+    <div class="panel md md-box">{{ readme_html|safe }}</div>
+</div>
+{% else %}
+<p class="muted">Brak lokalnej kopii README. Pobierz listę: <code>./awesome fetch {{ repo.full_name }}</code></p>
+{% endif %}
 {% endblock %}

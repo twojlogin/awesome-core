@@ -1,0 +1,26 @@
+<div class="panel">
+    <h2 style="margin-top:0;">Filtry</h2>
+    <form action="/search" method="get" class="row" style="margin-bottom:0.7rem;">
+        <input type="text" name="q" value="{{ query|default('') }}" placeholder="szukaj narzędzi..." style="flex:1;">
+        <button type="submit">Szukaj</button>
+    </form>
+    <div class="small muted" style="margin-bottom:0.3rem;">Język</div>
+    <div class="facets">
+        {% for name, count in langs %}<a class="tag" href="/lang/{{ name }}">{{ name }} <span class="dim">{{ count }}</span></a>{% endfor %}
+    </div>
+    <div class="small muted" style="margin:0.6rem 0 0.3rem;">Platforma</div>
+    <div class="facets">
+        {% for name, count in platforms %}<a class="tag" href="/os/{{ name }}">{{ name }} <span class="dim">{{ count }}</span></a>{% endfor %}
+    </div>
+    <div class="small muted" style="margin:0.6rem 0 0.3rem;">Domena</div>
+    <div class="facets">
+        {% for name, count in domains %}<a class="tag" href="/domain/{{ name }}">{{ name }} <span class="dim">{{ count }}</span></a>{% endfor %}
+    </div>
+    <div class="small muted" style="margin:0.6rem 0 0.3rem;">Inaczej</div>
+    <div class="facets">
+        <a class="tag" href="/underrated">niedoceniane</a>
+        <a class="tag" href="/gems">perełki</a>
+        <a class="tag" href="/lists">listy</a>
+        <a class="tag" href="/random">losowe</a>
+    </div>
+</div>

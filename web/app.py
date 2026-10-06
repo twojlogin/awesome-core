@@ -1,178 +1,378 @@
 #!/usr/bin/env python3
-"""web/app.py — Awesome Tools - Flask web interface"""
+"""web/app.py — Awesome Core: Flask UI (CLI / TUI / Web na jednym silniku)."""
 
-import sys
-import json
 import os
+import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
-from flask import Flask, render_template, request, redirect, url_for, flash
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from core.database import AwesomeDB
-from core.tools_db import ToolsDB
-from core.curator import ToolCurator
-from core.ai_librarian import recommend as ai_recommend
-from core.trust import assess_repo
+from flask import (
+    Flask, abort, flash, redirect, render_template, request, url_for,
+)
+
+
+BASE_DIR = Path(__file__).parent.parent
+sys.path.insert(0, str(BASE_DIR))
+
+from core import md, status as status_mod, store  # noqa: E402
+from core.ai_librarian import recommend as ai_recommend  # noqa: E402
+from core.curator import ToolCurator  # noqa: E402
+from core.database import AwesomeDB  # noqa: E402
+from core.tools_db import ToolsDB  # noqa: E402
+from core.trust import assess_repo  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("AWESOME_SECRET_KEY") or os.urandom(32)
-db = ToolsDB()
-repo_db = AwesomeDB()
-curator = ToolCurator()
-AI_CACHE_TTL = 300
-AI_MIN_INTERVAL = 10
-_ai_cache = {}
-_ai_last_request = {}
 
-BASE_DIR = Path(__file__).parent.parent
+
 README_DIR = BASE_DIR / "offline-db" / "data" / "readmes"
+
+
 INDEX_FILE = BASE_DIR / "offline-db" / "data" / "index.json"
 
 
-def load_index():
-    if INDEX_FILE.exists():
-        return json.loads(INDEX_FILE.read_text())
-    return {}
+AI_CACHE_TTL = 300
 
 
-def save_index(idx):
-    INDEX_FILE.write_text(json.dumps(idx, indent=2, ensure_ascii=False))
+AI_MIN_INTERVAL = 10
+
+_ai_cache = {}
+_ai_last_request = {}
+_readme_cache = {}
+
+tools_db = None
+repo_db = None
+curator = None
 
 
-def read_local_readme(repo_name):
-    metadata = repo_db.readme_index.get(repo_name)
+def dbs():
+    global tools_db, repo_db, curator
+    if tools_db is None:
+        tools_db = ToolsDB(BASE_DIR / "data")
+    if repo_db is None:
+        repo_db = AwesomeDB(BASE_DIR / "data")
+    if curator is None:
+        curator = ToolCurator(BASE_DIR / "data")
+    return tools_db, repo_db, curator
+
+
+def _int_arg(name, default=0):
+    try:
+        return int(request.args.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def read_readme(repo_name, use_cache=True):
+    _, repo_db, _ = dbs()
+    metadata = repo_db.get_repo(repo_name)
     if not metadata:
         return ""
-    readme_file = README_DIR / f"{metadata['owner']}__{metadata['name']}.md"
-    if not readme_file.exists():
+    path = README_DIR / f"{metadata['owner']}__{metadata['name']}.md"
+    if not path.exists():
         return ""
+    stat = path.stat()
+    key = (str(path), stat.st_mtime_ns, stat.st_size)
+    if use_cache and key in _readme_cache:
+        return _readme_cache[key]
     try:
-        return readme_file.read_text(encoding="utf-8", errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
+    _readme_cache[key] = text
+    if len(_readme_cache) > 64:
+        for stale in list(_readme_cache)[:16]:
+            _readme_cache.pop(stale, None)
+    return text
 
 
-def fetch_readme(owner, name):
-    full = f"{owner}/{name}"
-    safe_name = f"{owner}__{name}"
-    readme_file = README_DIR / f"{safe_name}.md"
+def readme_path(repo_name):
+    _, repo_db, _ = dbs()
+    metadata = repo_db.get_repo(repo_name)
+    if not metadata:
+        return None
+    path = README_DIR / f"{metadata['owner']}__{metadata['name']}.md"
+    return path if path.exists() else None
 
-    if readme_file.exists():
-        return True, "Już pobrane"
 
-    for branch in ["main", "master"]:
-        raw = f"https://raw.githubusercontent.com/{full}/{branch}/README.md"
-        result = subprocess.run(
-            ["curl", "-s", "-o", str(readme_file), "-w", "%{http_code}", "-L", raw],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.stdout.strip() == "200":
-            return True, "Pobrano"
-
-    if readme_file.exists():
-        readme_file.unlink()
-    return False, "Nie znaleziono README"
+def find_tool(needle):
+    """Szuka narzędzia po znormalizowanym URL-u albo po nazwie."""
+    tools, _, _ = dbs()
+    if not needle:
+        return None
+    tool = tools.get_tool(needle)
+    if tool:
+        return tool
+    tool = tools.get_tool_by_url(needle)
+    if tool:
+        return tool
+    return tools.tool_by_name(needle)
 
 
 @app.route("/")
 def index():
+    tools, repo_db, _ = dbs()
+    stats = tools.stats()
     return render_template(
         "index.html",
-        stats=db.stats,
-        top_sections=db.top_sections(15),
-        top_lists=db.top_lists(15),
+        stats=stats,
+        langs=tools.langs(min_count=20, limit=18),
+        platforms=tools.platforms(min_count=20, limit=12),
+        domains=tools.domains(min_count=20, limit=12),
+        best_lists=tools.best_lists(n=12, min_tools=20),
+        top_lists=tools.top_lists(12),
     )
 
 
 @app.route("/search")
 def search():
-    q = request.args.get("q", "").strip()
-    try:
-        min_stars = max(0, int(request.args.get("min_stars", 0)))
-    except (TypeError, ValueError):
-        min_stars = 0
-    alive_only = request.args.get("alive", "0") == "1"
-    results = db.search(q, limit=100, min_stars=min_stars, alive_only=alive_only) if q else []
-    return render_template("search.html", results=results, query=q, min_stars=min_stars, alive_only=alive_only)
+    tools, _, _ = dbs()
+    query = request.args.get("q", "").strip()
+    filters = {
+        "lang": request.args.get("lang") or None,
+        "platform": request.args.get("os") or request.args.get("platform") or None,
+        "domain": request.args.get("domain") or None,
+        "source": request.args.get("list") or None,
+        "min_stars": _int_arg("min_stars", 0),
+        "alive_only": request.args.get("alive") == "1",
+        "sort": request.args.get("sort", "score"),
+    }
+    min_consensus = _int_arg("min_consensus", 0)
+    results = []
+    if query:
+        results = tools.search(query, limit=200, **filters)
+        if min_consensus:
+            results = [t for t in results if t["lists_count"] >= min_consensus]
+    return render_template(
+        "search.html",
+        results=results[:100],
+        total=len(results),
+        query=query,
+        filters=filters,
+        min_consensus=min_consensus,
+        langs=tools.langs(min_count=5, limit=40),
+        platforms=tools.platforms(min_count=5, limit=30),
+        domains=tools.domains(min_count=10, limit=25),
+    )
+
+
+@app.route("/lang/<name>")
+def lang_page(name):
+    return _facet_page("lang", name)
+
+
+@app.route("/os/<name>")
+def platform_page(name):
+    return _facet_page("platform", name)
+
+
+@app.route("/domain/<name>")
+def domain_page(name):
+    return _facet_page("domain", name)
+
+
+def _facet_page(kind, name):
+    tools, _, _ = dbs()
+    sort = request.args.get("sort", "score")
+    min_stars = _int_arg("min_stars", 0)
+    limit = min(500, _int_arg("limit", 150))
+    if kind == "lang":
+        results = tools.by_lang(name, limit=limit, sort=sort, min_stars=min_stars)
+        label = f"język: {name}"
+    elif kind == "platform":
+        results = tools.by_platform(name, limit=limit, sort=sort, min_stars=min_stars)
+        label = f"platforma: {name}"
+    else:
+        results = tools.by_domain(name, limit=limit, sort=sort, min_stars=min_stars)
+        label = f"domena: {name}"
+    return render_template(
+        "facet.html",
+        kind=kind, name=name, label=label, results=results, sort=sort,
+        min_stars=min_stars, count=len(results),
+        langs=tools.langs(min_count=5, limit=40),
+        platforms=tools.platforms(min_count=5, limit=30),
+        domains=tools.domains(min_count=10, limit=25),
+    )
 
 
 @app.route("/section/<name>")
 def section(name):
-    items = db.by_section(name, limit=300)
-    return render_template("list.html", items=items, title=name, subtitle=f"sekcja")
+    tools, _, _ = dbs()
+    items = tools.by_section(name, limit=300)
+    return render_template("facet.html", kind="section", name=name,
+                           label=f"sekcja: {name}", results=items, sort="score",
+                           min_stars=0, count=len(items),
+                           langs=[], platforms=[], domains=[])
 
 
-@app.route("/repo/<path:name>")
-def repo_detail(name):
-    repo = repo_db.get_repo(name)
-    if not repo:
-        flash(f"Repozytorium '{name}' nie znalezione", "error")
-        return redirect(url_for("index"))
-    return render_template("repo.html", repo=repo, trust=assess_repo(repo))
+@app.route("/lists")
+def lists_page():
+    tools, _, _ = dbs()
+    return render_template(
+        "lists.html",
+        best=tools.best_lists(n=120, min_tools=10),
+    )
 
 
-@app.route("/category/<name>")
-def category(name):
-    repos = repo_db.list_category(name)
-    return render_template("category.html", cat=name, repos=repos)
+@app.route("/underrated")
+def underrated_page():
+    tools, _, _ = dbs()
+    lang = request.args.get("lang") or None
+    return render_template(
+        "facet.html", kind="underrated", name=lang or "wszystkie",
+        label="niedoceniane: dobra jakość, mało gwiazdek",
+        results=tools.underrated(limit=120, lang=lang), sort="underrated",
+        min_stars=0, count=120, langs=tools.langs(min_count=5, limit=40),
+        platforms=[], domains=[],
+    )
+
+
+@app.route("/gems")
+def gems_page():
+    tools, _, _ = dbs()
+    lang = request.args.get("lang") or None
+    return render_template(
+        "facet.html", kind="gem", name=lang or "wszystkie",
+        label="ukryte perełki: mało list, ale wysoki score",
+        results=tools.gems(limit=120, lang=lang), sort="gem",
+        min_stars=0, count=120, langs=tools.langs(min_count=5, limit=40),
+        platforms=[], domains=[],
+    )
 
 
 @app.route("/list/<path:repo>")
 def awesome_list(repo):
-    info = db.get_list_stats(repo)
-    items = db.by_source_repo(repo)
-    if not items:
-        flash(f"Lista '{repo}' nie znaleziona", "error")
-        return redirect(url_for("index"))
-    return render_template("list.html", items=items, title=repo, subtitle=f"lista ({info['count']} narzędzi)")
+    tools, _, _ = dbs()
+    stats = tools.get_list_stats(repo)
+    if not stats:
+        flash(f"Lista '{repo}' nie ma narzędzi w bazie", "error")
+        return redirect(url_for("lists_page"))
+    items = tools.by_source_repo(repo, limit=400)
+    return render_template("list.html", items=items, title=repo, stats=stats)
 
 
-@app.route("/tool/<path:url>")
-def tool_detail(url):
-    tool = db.get_tool_by_url(url)
+@app.route("/tool/<path:needle>")
+def tool_detail(needle):
+    tools, _, local_curator = dbs()
+    tool = find_tool(needle)
     if not tool:
-        flash("Narzędzie nie znalezione", "error")
-        return redirect(url_for("index"))
-
-    similar = db.find_similar(tool, limit=5)
-    install_info = db.get_install_info(tool)
-    source_readme = read_local_readme(tool.get("source_repo", ""))
+        abort(404)
+    similar = tools.find_similar(tool, limit=5)
+    install = local_curator.detect_install_method(tool)
+    explain = tools.explain(tool)
+    mentions = explain["mentions"]
+    excerpt_html = ""
+    excerpt_toc = []
+    source = tool.get("source_repo")
+    if source:
+        text = read_readme(source)
+        if text:
+            section = md.excerpt(text, tool.get("name", ""), max_chars=20000)
+            excerpt_html, excerpt_toc = md.render(
+                section, base_url=md.raw_github_url(source)
+            )
     return render_template(
         "tool.html",
         tool=tool,
         similar=similar,
-        install=install_info,
-        source_readme=source_readme,
+        install=install,
+        explain=explain,
+        mentions=mentions,
+        excerpt_html=excerpt_html,
+        excerpt_toc=md.render_toc(excerpt_toc, limit=12),
     )
 
 
-@app.route("/tool/action", methods=["POST"])
-def tool_action():
-    name = request.form.get("tool_name", "").strip()
-    action = request.form.get("action", "").strip()
-    tool = curator.get_tool_by_name(name)
-    if not tool or action not in {"install", "uninstall"}:
-        flash("Nieprawidłowa akcja narzędzia", "error")
+@app.route("/repo/<path:name>")
+def repo_detail(name):
+    tools, repo_db, _ = dbs()
+    repo = repo_db.get_repo(name)
+    if not repo:
+        flash(f"Lista '{name}' nie istnieje w bazie", "error")
         return redirect(url_for("index"))
-
-    result = (
-        curator.install_tool(name)
-        if action == "install"
-        else curator.uninstall_tool(name)
+    text = read_readme(name)
+    body, toc = md.render(text, base_url=md.raw_github_url(name))
+    path = readme_path(name)
+    return render_template(
+        "repo.html",
+        repo=repo,
+        readme_html=body,
+        toc=md.render_toc(toc),
+        raw_link=f"/readme/{name}",
+        has_readme=bool(text),
+        readme_size=path.stat().st_size if path else 0,
+        trust=assess_repo(repo),
+        quality=repo.get("quality", 0),
+        tool_count=repo.get("unique_tool_count", 0),
+        top_tools=tools.by_source_repo(name, limit=12),
+        sections=tools.get_list_stats(name) or {},
     )
-    if result["status"] in {"installed", "already_installed", "uninstalled"}:
-        flash(result.get("message", "Gotowe"), "success")
-    else:
-        flash(result.get("message", "Akcja nieudana"), "error")
-    return redirect(url_for("tool_detail", url=tool.get("url", "")))
+
+
+@app.route("/readme/<path:name>")
+def readme_raw(name):
+    """Surowy lokalny README (bez renderu) — do podglądu w <pre>."""
+    text = read_readme(name)
+    if not text:
+        abort(404)
+    return render_template("raw.html", name=name, text=text)
+
+
+@app.route("/mentions/<path:needle>")
+def mentions_page(needle):
+    tools, _, _ = dbs()
+    tool = find_tool(needle)
+    if not tool:
+        abort(404)
+    return render_template(
+        "mentions.html", tool=tool, mentions=tools.mentions(tool["url_norm"])
+    )
+
+
+@app.route("/category/<name>")
+def category(name):
+    _, repo_db, _ = dbs()
+    repos = repo_db.list_category(name)
+    if not repos:
+        flash(f"Brak tematu '{name}'", "error")
+        return redirect(url_for("index"))
+    return render_template("list.html", items=repos, title=name, stats=None)
 
 
 @app.route("/random")
 def random_page():
-    items = db.random(20)
-    return render_template("list.html", items=items, title="Losowe", subtitle="")
+    tools, _, _ = dbs()
+    return render_template("facet.html", kind="random", name="losowe",
+                           label="losowe narzędzia",
+                           results=tools.random(20), sort="score",
+                           min_stars=0, count=20, langs=[], platforms=[], domains=[])
+
+
+@app.route("/stats")
+def stats_page():
+    tools, repo_db, _ = dbs()
+    stats = tools.stats()
+    mentions = tools.conn.execute("SELECT COUNT(*) FROM tool_mentions").fetchone()[0]
+    repos = tools.conn.execute(
+        "SELECT COUNT(*) total, SUM(CASE WHEN stars > 0 THEN 1 ELSE 0 END) with_meta,"
+        " SUM(CASE WHEN archived = 1 THEN 1 ELSE 0 END) archived FROM repos"
+    ).fetchone()
+    consensus = tools.conn.execute(
+        "SELECT COUNT(*) FROM tools WHERE lists_count > 1"
+    ).fetchone()[0]
+    alive = tools.conn.execute(
+        "SELECT COUNT(*) FROM tools WHERE alive IS NOT NULL"
+    ).fetchone()[0]
+    return render_template(
+        "stats.html", stats=stats, mentions=mentions, repos=dict(repos),
+        consensus=consensus, alive=alive,
+        langs=tools.langs(min_count=5, limit=25),
+        platforms=tools.platforms(min_count=5, limit=20),
+        domains=tools.domains(min_count=10, limit=20),
+        best_lists=tools.best_lists(n=10, min_tools=50),
+    )
 
 
 @app.route("/help")
@@ -182,43 +382,77 @@ def help_page():
 
 @app.route("/installed")
 def installed_page():
-    return render_template("installed.html", installed=curator.list_installed())
+    _, _, local_curator = dbs()
+    return render_template("installed.html", installed=local_curator.list_installed())
+
+
+@app.route("/tool/action", methods=["POST"])
+def tool_action():
+    _, _, local_curator = dbs()
+    name = request.form.get("tool_name", "").strip()
+    action = request.form.get("action", "").strip()
+    tools, _, _ = dbs()
+    if action not in {"install", "uninstall"}:
+        flash("Nieprawidłowa akcja", "error")
+        return redirect(url_for("index"))
+    result = (
+        local_curator.install_tool(name)
+        if action == "install"
+        else local_curator.uninstall_tool(name)
+    )
+    if result["status"] in {"installed", "already_installed", "uninstalled"}:
+        flash(result.get("message", "Gotowe"), "success")
+    else:
+        flash(result.get("message", "Operacja nieudana"), "error")
+    tool = find_tool(name)
+    if tool:
+        return redirect(f"/tool/{tool['url_norm']}")
+    return redirect(url_for("index"))
 
 
 @app.route("/add", methods=["GET", "POST"])
 def add_repo():
     if request.method == "GET":
         return render_template("add.html")
-
-    url = request.args.get("url", "").strip()
-    if not url:
+    url_value = request.args.get("url", "").strip().rstrip("/")
+    if not url_value:
         flash("Podaj URL repozytorium", "error")
         return redirect(url_for("add_repo"))
-
-    url = url.rstrip("/")
-    if "github.com" in url:
-        parts = url.split("github.com/")[-1].strip("/").split("/")
-        if len(parts) >= 2:
-            owner, name = parts[0], parts[1]
-        else:
+    if "github.com" in url_value:
+        parts = url_value.split("github.com/")[-1].strip("/").split("/")
+        if len(parts) < 2:
             flash("Nieprawidłowy URL GitHub", "error")
             return redirect(url_for("add_repo"))
+        owner, name = parts[0], parts[1]
     else:
         flash("Tylko GitHub jest wspierany", "error")
         return redirect(url_for("add_repo"))
 
-    ok, msg = fetch_readme(owner, name)
+    ok, message = fetch_readme(owner, name)
     if not ok:
-        flash(f"Błąd: {msg}", "error")
+        flash(f"Błąd: {message}", "error")
         return redirect(url_for("add_repo"))
+    flash(f"Dodano {owner}/{name} ({message}). Przebuduj bazę: python3 extract_tools.py", "success")
+    return redirect(url_for("repo_detail", name=f"{owner}/{name}"))
 
-    idx = load_index()
+
+def fetch_readme(owner, name):
     full = f"{owner}/{name}"
-    idx[full] = {"owner": owner, "name": name, "readme_downloaded": True}
-    save_index(idx)
-
-    flash(f"Dodano: {full} ({msg})", "success")
-    return redirect(url_for("awesome_list", repo=full))
+    path = README_DIR / f"{owner}__{name}.md"
+    if path.exists():
+        return True, "Już pobrane"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for branch in ("main", "master"):
+        result = subprocess.run(
+            ["curl", "-f", "-s", "-o", str(path), "-w", "%{http_code}", "-L",
+             f"https://raw.githubusercontent.com/{full}/{branch}/README.md"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.stdout.strip() == "200":
+            return True, "Pobrano"
+    if path.exists():
+        path.unlink()
+    return False, "Nie znaleziono README"
 
 
 @app.route("/add/topic", methods=["POST"])
@@ -227,60 +461,77 @@ def add_topic():
     if not topic:
         flash("Podaj topic", "error")
         return redirect(url_for("add_repo"))
+    return run_step("download", topic)
 
-    subprocess.Popen(
-        ["bash", str(BASE_DIR / "download.sh"), topic, "100", "1"],
-        cwd=str(BASE_DIR),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
+
+def run_step(step, topic="awesome-list", limit=20000):
+    """Wspólna ścieżka dla /refresh, /rebuild i /add/topic — synchronicznie."""
+    if step == "build":
+        code, log = run_script([sys.executable, "extract_tools.py"], timeout=1800)
+    elif step == "backfill":
+        code, log = run_script(
+            [sys.executable, "-c",
+             "from core import backfill; backfill.clean_index(); backfill.backfill()"],
+            timeout=1800,
+        )
+    elif step == "enrich":
+        code, log = run_script(
+            [sys.executable, "core/enrich.py", "--limit", str(limit)], timeout=7200
+        )
+    elif step == "download":
+        code, log = run_script(
+            ["bash", "download.sh", topic, "100", "1", "20", "--wide"], timeout=7200
+        )
+    else:
+        flash("Nieznany krok", "error")
+        return redirect(url_for("refresh_page"))
+    global tools_db, repo_db
+    tools_db = repo_db = None
+    dbs()
+    return render_template(
+        "refresh.html",
+        status=status_mod.collect(BASE_DIR / "data"),
+        step=step,
+        log="\n".join(log),
+        code=code,
+        ok=code == 0,
+        message="Gotowe." if code == 0 else "Zakończone z błędem — szczegóły poniżej.",
     )
 
-    flash(f"Pobieranie topicu '{topic}' uruchomione w tle", "success")
-    return redirect(url_for("add_repo"))
+
+def run_script(args, timeout=None):
+    """Odpala składnię i zwraca (kod wyjścia, końcówkę logu)."""
+    try:
+        result = subprocess.run(
+            args, cwd=str(BASE_DIR), capture_output=True, text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, "Przekroczono limit czasu — przerwane."
+    log = (result.stdout or "") + (result.stderr or "")
+    return result.returncode, log.strip().split("\n")[-60:]
+
+
+@app.route("/refresh", methods=["GET", "POST"])
+def refresh_page():
+    """Ręczne odświeżanie: każdy krok jednym kliknięciem, nic nie leci w tle."""
+    current = status_mod.collect(BASE_DIR / "data")
+    if request.method == "POST":
+        step = request.form.get("step", "")
+        topic = request.form.get("topic", "awesome-list").strip() or "awesome-list"
+        limit = _int_arg("limit", 20000) or 20000
+        return run_step(step, topic=topic, limit=limit)
+    return render_template("refresh.html", status=current, step=None, log=None, code=None)
 
 
 @app.route("/rebuild", methods=["POST"])
 def rebuild():
-    subprocess.run(
-        ["python3", str(BASE_DIR / "extract_tools.py")],
-        cwd=str(BASE_DIR),
-        capture_output=True
-    )
-
-    subprocess.run(
-        ["python3", "-c", """
-import json
-from collections import defaultdict
-tools = json.load(open('data/tools.json'))
-index = defaultdict(list)
-for i, tool in enumerate(tools):
-    name = tool.get('name', '').lower()
-    desc = tool.get('description', '').lower()
-    text = f'{name} {desc}'
-    words = set()
-    for w in text.split():
-        w = w.strip('.,;:!?()[]{}\"\\' -/')
-        if len(w) >= 2:
-            words.add(w)
-    for w in words:
-        index[w].append(i)
-with open('data/search_index.json', 'w') as f:
-    json.dump(dict(index), f)
-"""],
-        cwd=str(BASE_DIR),
-        capture_output=True
-    )
-
-    global db
-    db = ToolsDB()
-
-    flash("Baza przebudowana!", "success")
-    return redirect(url_for("add_repo"))
+    return run_step("build")
 
 
 @app.route("/api/ai/ask", methods=["GET", "POST"])
 def api_ai_ask():
-    """AI Bibliotekarz: pytanie po ludzku -> rekomendacje narzedzi (JSON)."""
+    tools, _, _ = dbs()
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         q = str(data.get("q", "")).strip()
@@ -289,7 +540,7 @@ def api_ai_ask():
     if not q:
         return {"error": "parametr 'q' wymagany"}, 400
     try:
-        limit = max(1, min(int(request.values.get("limit", 5)), 10))
+        limit = max(1, min(_int_arg("limit", 5), 10))
     except (TypeError, ValueError):
         limit = 5
     client = request.remote_addr or "local"
@@ -298,20 +549,58 @@ def api_ai_ask():
     cached = _ai_cache.get(cache_key)
     if cached and now - cached[0] < AI_CACHE_TTL:
         return cached[1]
-    last_request = _ai_last_request.get(client, 0)
-    if now - last_request < AI_MIN_INTERVAL:
+    last = _ai_last_request.get(client, 0)
+    if now - last < AI_MIN_INTERVAL:
         return {"error": "Za dużo zapytań AI. Spróbuj ponownie za chwilę."}, 429
     _ai_last_request[client] = now
     try:
-        result = ai_recommend(db, q, limit=limit)
+        result = ai_recommend(tools, q, limit=limit)
         _ai_cache[cache_key] = (now, result)
         return result
-    except RuntimeError as e:
-        return {"error": str(e)}, 503
+    except RuntimeError as exc:
+        return {"error": str(exc)}, 503
+
+
+@app.route("/api/tools")
+def api_tools():
+    tools, _, _ = dbs()
+    query = request.args.get("q", "").strip()
+    if not query:
+        return {"error": "parametr 'q' wymagany"}, 400
+    results = tools.search(
+        query, limit=min(50, _int_arg("limit", 20)),
+        lang=request.args.get("lang") or None,
+        platform=request.args.get("os") or None,
+    )
+    return {
+        "query": query,
+        "count": len(results),
+        "tools": [
+            {
+                "name": t["name"], "url": t["url"], "lang": t["lang"],
+                "platform": t["platform"], "score": t["score"],
+                "lists": t["lists_count"], "stars": t["tool_stars"],
+                "source": t["source_repo"],
+            }
+            for t in results
+        ],
+    }
+
+
+def find_free_port(default=5001):
+    for candidate in range(default, default + 60):
+        with socket.socket() as sock:
+            if sock.connect_ex(("127.0.0.1", candidate)) != 0:
+                return candidate
+    return default
 
 
 if __name__ == "__main__":
-    import sys
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001
-    print(f"Awesome Tools — http://localhost:{port}")
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else find_free_port()
+    if store.db_ready(BASE_DIR / "data"):
+        dbs()
+        print(f"Awesome Core — http://localhost:{port}")
+    else:
+        print("Brak bazy. Zbuduj ją ręcznie: ./awesome build  (lub python3 extract_tools.py)")
+        print(f"Web UI bez bazy: http://localhost:{port}/refresh")
     app.run(debug=False, port=port)

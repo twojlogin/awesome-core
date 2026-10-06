@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Wzmianki: {{ tool.name }}{% endblock %}
+{% block content %}
+<div class="breadcrumb"><a href="/tool/{{ tool.url_norm }}">{{ tool.name }}</a> / wzmianki</div>
+<h2 style="margin-top:0;">{{ tool.name }} — {{ mentions|length }} list, {{ tool.owners_count }} niezależnych autorów</h2>
+<p class="muted">Deduplikacja po URL nie usuwa informacji — każda lista jest zapamiętana, więc widać zgodę kuratorów.</p>
+<table class="data">
+    <tr><th>lista</th><th>sekcja</th><th>nazwa w liście</th><th>opis w liście</th></tr>
+    {% for mention in mentions %}
+    <tr>
+        <td><a href="/repo/{{ mention.source_repo }}">{{ mention.source_repo }}</a></td>
+        <td class="dim">{{ mention.section }}</td>
+        <td>{{ mention.name }}</td>
+        <td class="muted small">{{ mention.description[:120] }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
