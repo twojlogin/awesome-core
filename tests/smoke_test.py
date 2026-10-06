@@ -16,7 +16,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from core import aliases, clones, fetcher, langmap, md, mcp, parser, scoring, untrusted  # noqa: E402
+from core import aliases, api, clones, doctor, fetcher, langmap, md, mcp, parser, scoring, untrusted  # noqa: E402
 from core.builder import build  # noqa: E402
 from core.database import AwesomeDB  # noqa: E402
 from core import status as status_mod  # noqa: E402
@@ -380,21 +380,22 @@ class TestFetcher(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        self._saved = (fetcher.BASE_DIR, fetcher.DATA_DIR,
-                       fetcher.README_DIR, fetcher.INDEX_FILE,
-                       fetcher.gh_api, fetcher.fetch_readme, fetcher.gh_token)
+        self._saved = (fetcher.DATA_DIR, fetcher.README_DIR,
+                       fetcher.INDEX_FILE, fetcher.fetch_readme,
+                       api.search_repositories, api.token)
         fetcher.DATA_DIR = self.tmp / "data"
         fetcher.README_DIR = fetcher.DATA_DIR / "readmes"
         fetcher.INDEX_FILE = fetcher.DATA_DIR / "index.json"
-        fetcher.gh_token = lambda: "token"
+        api.token = lambda: "token"
         self.pages = {}
-        fetcher.gh_api = self._fake_api
+        api.search_repositories = self._fake_search
         fetcher.fetch_readme = self._fake_readme
         self.requested = []
 
     def tearDown(self):
-        (fetcher.BASE_DIR, fetcher.DATA_DIR, fetcher.README_DIR, fetcher.INDEX_FILE,
-         fetcher.gh_api, fetcher.fetch_readme, fetcher.gh_token) = self._saved
+        (fetcher.DATA_DIR, fetcher.README_DIR, fetcher.INDEX_FILE,
+         fetcher.fetch_readme, api.search_repositories,
+         api.token) = self._saved
 
     @staticmethod
     def _item(full, stars=10):
@@ -402,10 +403,8 @@ class TestFetcher(unittest.TestCase):
                 "html_url": f"https://github.com/{full}", "language": "Markdown",
                 "topics": ["awesome-list"]}
 
-    def _fake_api(self, endpoint, token, retries=3):
-        self.requested.append(endpoint)
-        # rsplit, bo "per_page=100" też zawiera w sobie "page="
-        page = int(endpoint.rsplit("page=", 1)[1].split("&")[0])
+    def _fake_search(self, query, page=1, per_page=100, sort="stars", retries=3):
+        self.requested.append((query, page))
         return {"items": self.pages.get(page, [])}
 
     @staticmethod
@@ -467,7 +466,7 @@ class TestFetcher(unittest.TestCase):
         self.pages = {1: full_page, 2: [self._item("acme/one")]}
         fetcher.download(wide=False, verbose=False)
         self.assertEqual(len(self.requested), 2)
-        self.assertTrue(any("page=2" in url for url in self.requested))
+        self.assertEqual(self.requested[1][1], 2)
 
     def test_short_page_ends_pagination(self):
         self.pages = {1: [self._item("acme/one")]}
@@ -594,6 +593,111 @@ class TestCliIsForgiving(unittest.TestCase):
             )
             self.assertNotIn("Traceback", done.stdout + done.stderr, args)
             self.assertNotIn("Traceback", done.stderr)
+
+
+class TestAutomation(unittest.TestCase):
+    """Program ma działać bez ręcznych kroków, także bez gh i bez sieci.
+
+    Wymóg właściciela: od klonowania repo do pierwszego wyniku nie może być
+    żadnej czynności „wymagającej wiedzy" (venv, pip, jq, curl, gh auth
+    login). Testy sprawdzają dokładnie te ścieżki.
+    """
+
+    def _without_gh(self, monkey_token=""):
+        from core import api as api_mod
+
+        saved = (api_mod.gh_path, api_mod.token)
+        api_mod.gh_path = lambda: None
+        api_mod.token = lambda: monkey_token
+        self.addCleanup(lambda: setattr(api_mod, "gh_path", saved[0]))
+        self.addCleanup(lambda: setattr(api_mod, "token", saved[1]))
+
+    def test_api_reports_every_mode_honestly(self):
+        from core import api as api_mod
+
+        saved = (api_mod.gh_path, api_mod.token)
+        self.addCleanup(lambda: setattr(api_mod, "gh_path", saved[0]))
+        self.addCleanup(lambda: setattr(api_mod, "token", saved[1]))
+
+        api_mod.gh_path = lambda: None
+        api_mod.token = lambda: ""
+        self.assertEqual(api_mod.mode(), "anonymous")
+        self.assertIn("bez logowania", api_mod.describe())
+        self.assertGreater(api_mod.search_pause(), 0,
+                           "bez tokena musi zwalniać, inaczej GitHub odcina")
+
+        api_mod.token = lambda: "secret"
+        self.assertEqual(api_mod.mode(), "token")
+        self.assertEqual(api_mod.search_pause(), 0)
+
+        api_mod.gh_path = lambda: "/usr/bin/gh"
+        self.assertEqual(api_mod.mode(), "gh+token")
+
+    def test_fetcher_works_without_gh(self):
+        """Nie ma gh, nie ma sieci w testach — ale ścieżka kodu musi być ta sama."""
+        self._without_gh()
+        fetcher.gh_token = getattr(fetcher, "gh_token", lambda: "")
+        pages = {1: [{"full_name": "acme/awesome-x", "stargazers_count": 5,
+                      "html_url": "https://github.com/acme/awesome-x",
+                      "language": "Markdown", "topics": []}]}
+        requested = []
+
+        def fake_search(query, page=1, per_page=100, sort="stars", retries=3):
+            requested.append((query, page))
+            return {"items": pages.get(page, [])}
+
+        saved = api.search_repositories
+        api.search_repositories = fake_search
+        self.addCleanup(lambda: setattr(api, "search_repositories", saved))
+
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        saved_paths = (fetcher.DATA_DIR, fetcher.README_DIR, fetcher.INDEX_FILE)
+        fetcher.DATA_DIR = self.tmp / "data"
+        fetcher.README_DIR = fetcher.DATA_DIR / "readmes"
+        fetcher.INDEX_FILE = fetcher.DATA_DIR / "index.json"
+        self.addCleanup(lambda: [setattr(fetcher, name, value) for name, value
+                                 in zip(("DATA_DIR", "README_DIR", "INDEX_FILE"),
+                                        saved_paths)])
+        fetcher.fetch_readme = lambda full, tok: f"# {full}\n\n- [t](https://github.com/a/b)"
+
+        status, new, skipped, missing = fetcher.download(
+            wide=False, verbose=False)
+        self.assertEqual(status, 0)
+        self.assertEqual(new, 1)
+        self.assertTrue(requested, "nie odpytało GitHuba przez api.search_repositories")
+        self.assertTrue((fetcher.README_DIR / "acme__awesome-x.md").exists())
+
+    def test_doctor_says_what_to_do_not_just_what_is_wrong(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            points = doctor.run(base_dir=tmp, network=False)
+            names = {p["name"]: p for p in points}
+            self.assertIn("Baza", names)
+            self.assertEqual(names["Baza"]["status"], "fail")
+            self.assertEqual(names["Baza"]["action"], "./awesome start",
+                             "każdy problem musi mieć akcję do wykonania")
+            for point in points:
+                if point["status"] != "ok":
+                    self.assertTrue(point["action"],
+                                    f"{point['name']} bez instrukcji")
+
+    def test_doctor_summary_contains_no_secrets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            text = doctor.summary(doctor.run(base_dir=tmp, network=False))
+            self.assertNotIn("ghp_", text)
+            self.assertNotIn("GITHUB_TOKEN=", text)
+
+    def test_enrich_without_credentials_says_so_and_does_not_crash(self):
+        import shutil as shutil_mod
+
+        from core import enrich as enrich_mod
+
+        saved = shutil_mod.which
+        shutil_mod.which = lambda name: None
+        try:
+            self.assertEqual(enrich_mod.enrich(verbose=False), 0)
+        finally:
+            shutil_mod.which = saved
 
 
 class TestDocsAreTruthful(unittest.TestCase):
@@ -776,11 +880,13 @@ class TestNoAIinCore(unittest.TestCase):
     # validator.py sprawdza czy linki żyją (tylko przy "awesome validate"),
     # aliases.py potrafi dociągnąć zdalną listę aliasów — oba na wyraźne
     # polecenie. md.py ma urllib.parse, ale to parsowanie tekstu, nie sieć.
-    # fetcher.py to świadomy pobieracz (zamiennik download.sh), więc sieć
-    # w nim jest z założenia — i tylko wtedy, gdy user odpali pobieranie.
+    # fetcher.py to świadomy pobieracz (zamiennik download.sh), api.py —
+    # jedyne miejsce, w którym program rozmawia z GitHubem, a bootstrap.py —
+    # jedyne, które odpala pip. Sieć w nich jest z założenia i tylko wtedy,
+    # gdy użytkownik wprost o to poprosi.
     NETWORK_OK = {"trust.py", "aliases.py", "curator.py", "enrich.py",
                   "backfill.py", "mcp.py", "status.py", "builder.py",
-                  "validator.py", "fetcher.py", "bootstrap.py"}
+                  "validator.py", "fetcher.py", "bootstrap.py", "api.py"}
 
     def _imports(self, path):
         """Pełne nazwy modułów ('urllib.request'), bo same korzenie kłamią."""

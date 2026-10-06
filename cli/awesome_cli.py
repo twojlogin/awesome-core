@@ -6,6 +6,7 @@ PIERWSZE URUCHOMIENIE (zacznij tutaj):
   awesome start                      — robi wszystko za Ciebie i mówi co się dzieje
   awesome search nmap               — szukaj
   awesome web                        — przeglądarka
+  awesome doctor                     — coś nie działa? tu jest odpowiedź
 
 Codziennie:
   awesome status                    — co jest w bazie i co warto odświeżyć
@@ -694,7 +695,10 @@ def cmd_status():
 
 REQUIRED_TOOLS = [
     ("python3", "Python 3.8+ — sam program"),
-    ("gh", "GitHub CLI — pobieranie list (gh auth login)"),
+    # gh NIE jest wymagane. Bez niego program rozmawia z GitHubem przez HTTPS
+    # (core/api.py) — wolniej, bo bez logowania, ale działa. Wymaganie gh
+    # blokowało ludzi na czystej maszynie, a to była ostatnia ręczna czynność
+    # między sklonowaniem repo a pierwszym wynikiem.
     # jq i curl były wymagane dla download.sh. Od kiedy pobieranie jest
     # w Pythonie (core/fetcher.py), wymaganie ich tylko blokowało ludzi —
     # szczególnie na Windowsie, gdzie jq i curl często nie ma w PATH.
@@ -718,11 +722,32 @@ def check_requirements():
             problems.append(f"brakuje '{tool}' — {hint}")
     if not shutil.which("python3") or sys.version_info < (3, 8):
         problems.append("za stary Python — potrzebne 3.8 lub nowsze")
-    if shutil.which("gh"):
-        result = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True)
-        if result.returncode != 0:
-            problems.append("gh nie jest zalogowane — wpisz: gh auth login")
     return problems
+
+
+def cmd_doctor():
+    """"coś nie działa" → jedna komenda z gotową odpowiedzią."""
+    from core import doctor
+
+    print("\nSprawdzam środowisko:\n")
+    points = doctor.run()
+    marks = {"ok": "OK  ", "warn": "UWAGA", "fail": "BŁĄD"}
+    for point in points:
+        print(f"  [{marks[point['status']]}] {point['name']}: {point['detail']}")
+        if point["action"]:
+            print(f"          → {point['action']}")
+    broken = [p for p in points if p["status"] == "fail"]
+    if broken:
+        print(f"\n{len(broken)} rzeczy do naprawienia. Kolejność jak wyżej — "
+              f"po każdej poprawce `./awesome doctor` powie, co dalej.")
+        return 1
+    warnings = [p for p in points if p["status"] == "warn"]
+    print("\nWszystko działa."
+          + (f" {len(warnings)} rzeczy da się przyspieszyć (patrz wyżej)."
+             if warnings else ""))
+    print("\nDo zgłoszenia błędu wklej to (bez sekretów):\n")
+    print(doctor.summary(points))
+    return 0
 
 
 def cmd_start(args):
@@ -748,6 +773,13 @@ def cmd_start(args):
     state = status_mod.collect(BASE_DIR / "data")
     readmes = state.get("readmes", 0) if state.get("ready") else 0
     steps = list(START_STEPS)
+    if "--full" in args:
+        steps.append(("enrich", "Pobieram metadane repozytoriów narzędzi",
+                      "30–60 min"))
+        steps.append(("build", "Przebudowuję bazę z nowymi gwiazdkami", "~2 min"))
+    elif readmes:
+        print("\n(Podpowiedź: ./awesome start --full zrobi też metadane "
+              "narzędzi, ale to 30–60 min.)")
     if "--skip-download" in args:
         steps = [step for step in steps if step[0] != "download"]
         print(f"\nPominam pobieranie (masz już {readmes} plików README lokalnie).")
@@ -769,6 +801,8 @@ def cmd_start(args):
             cmd_build()
         elif key == "backfill":
             cmd_backfill()
+        elif key == "enrich":
+            cmd_enrich(None)
         print(f"\n[✓] Krok {index} skończony w {time.perf_counter() - started:.0f}s\n")
 
     print("=" * 66)
@@ -776,13 +810,33 @@ def cmd_start(args):
     print("=" * 66)
     for line in status_mod.render(status_mod.collect(BASE_DIR / "data"))[1:8]:
         print(line)
-    print("\nCo teraz? Spróbuj jednego z tych:\n")
-    print("  ./awesome search \"port scanner\"")
-    print("  ./awesome search osint --os windows --lang PowerShell")
+
+    # Co zostało zrobione, a czego nie — bo „gotowe" bez tej informacji
+    # wygląda wtedy jak skończona robota, a w bazie są tylko szacunki.
+    from core import api
+
+    if "--full" in args:
+        print("\nMetadane narzędzi: pobrane (prawdziwe gwiazdki i języki).")
+    else:
+        print("\nMetadane narzędzi: NIE pobrane. Ranking i tak działa — opiera się")
+        print("na zgodzie kuratorów — ale gwiazdka przy narzędziu to na razie "
+              "szacunek")
+        print("z listy, nie liczba z repozytorium.")
+        if not api.token():
+            print("\nPobranie ich wymaga zalogowania do GitHuba:")
+            print("  gh auth login                  # albo: GITHUB_TOKEN=... ./awesome enrich")
+        else:
+            print("\nJak je dociągnąć (30–60 min, Ctrl+C jest bezpieczny,")
+            print("dokończenie jedzie od miejsca przerwania):")
+            print("  ./awesome enrich && ./awesome build")
+        print("Albo wszystko naraz od nowa: ./awesome start --full")
+
+    print("\nCo teraz? Jedno z tych:\n")
+    print('  ./awesome search "port scanner"')
+    print("  ./awesome search osint --domain security --min-consensus 3")
     print("  ./awesome tui                      # terminal, interaktywnie")
     print("  ./awesome web                      # przeglądarka")
-    print("\nJeśli chcesz lepsze dane (prawdziwe gwiazdki i języki narzędzi):")
-    print("  ./awesome enrich --limit 40000     # ~35 min, potem ./awesome build")
+    print("\nCoś nie działa? ./awesome doctor")
     return 0
 
 
@@ -1150,6 +1204,8 @@ def main():
             int(args[args.index("--limit") + 1]) if "--limit" in args else None,
             non_github="--non-github" in args,
         )
+    elif cmd in {"doctor", "diagnostyka", "co-jest-nie-tak"}:
+        sys.exit(cmd_doctor() or 0)
     elif cmd in {"download", "pobierz"} and args:
         cmd_topic(args[0], wide="--narrow" not in args,
                   limit=_limit_from(args, None))

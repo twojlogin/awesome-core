@@ -45,22 +45,32 @@ samo w tle — zawsze widzisz postęp.
 
 ## Co musisz mieć zanim zaczniesz
 
-Dwie rzeczy, obie darmowe:
+**Jedna rzecz: Python 3.8 lub nowszy.** To wszystko.
 
 | Potrzebujesz | Po co | Sprawdzenie |
 |---|---|---|
-| **Python 3.8+** | program | `python3 --version` |
-| **gh** (GitHub CLI) | pobieranie list i metadanych (logujesz się raz) | `gh --version` |
+| **Python 3.8+** | program — jedyna zależność | `python3 --version` |
 
-**Nie potrzebujesz** jq, curl ani samodzielnego `python -m venv`. Pobieranie
-jest napisane w Pythonie (`core/fetcher.py`), a `./awesome web` samo tworzy
-środowisko i instaluje Flask, mówiąc na ekranie co robi.
+**Nie potrzebujesz** jq, curl, GitHub CLI ani samodzielnego `python -m venv`:
+
+- pobieranie list działa przez zwykły HTTPS (`core/api.py`) — bez `gh` jest
+  wolniej, bo GitHub limituje wyszukiwanie do 10 zapytań na minutę, ale działa;
+- Flask do web UI instaluje się sam przy pierwszym `./awesome web`;
+- program sam mówi, gdy brakuje czegoś (`./awesome doctor`).
+
+Jeśli masz `gh` i się zalogujesz (`gh auth login`), wszystko idzie 30× szybciej
+i `enrich` w ogóle się odblokuje. Ale to przyspieszenie, nie warunek.
 
 Instalacja na Linuksie:
 
 ```bash
-sudo apt install python3 jq curl        # albo: sudo dnf install python3 jq curl
-gh auth login                          # zaloguj się do GitHuba (jednorazowo)
+sudo apt install python3               # albo: sudo dnf install python3
+```
+
+Opcjonalnie, dla 30× szybszego pobierania i metadanych narzędzi:
+
+```bash
+gh auth login                          # GitHub CLI, jednorazowo
 ```
 
 **Windows działa bez basha.** W katalogu jest `awesome.cmd`, więc w PowerShellu
@@ -115,18 +125,24 @@ Program sprawdza, czy masz wszystko, potem:
 | 4 | gotowe | — |
 
 **Uwaga, uczciwie:** `start` nie odpytuje GitHuba o repozytoria samych
-narzędzi. Ranking od razu działa (na zgodzie kuratorów), ale „★" przy
+narzędzi. Ranking od razu działa (na zgodzie kuratorów), ale gwiazdka przy
 narzędziu to na razie szacunek z listy, nie prawdziwa liczba. Jedna komenda
 to naprawia:
 
 ```bash
-./awesome enrich      # ~30–60 min, odpytuje ~35 tys. repozytoriów
+./awesome enrich      # 30–60 min, odpytuje ~35 tys. repozytoriów
 ./awesome build       # ~2 min, żeby gwiazdki wsiąkły do rankingu
-./awesome status      # pokaże, zostało coś do odpytania
+```
+
+Albo jednym poleceniem od zera:
+
+```bash
+./awesome start --full   # download → build → backfill → enrich → build
 ```
 
 Robisz to raz. Przerwać można w każdej chwili (Ctrl+C) — postęp jest zapisywany
-i odpalanie komendy drugi raz jedzie dalej.
+i odpalanie komendy drugi raz jedzie dalej. Bez zalogowania do GitHuba `enrich`
+odmawia z wyjaśnieniem zamiast udawać, że zrobił swoją robotę.
 
 Jeśli masz mało czasu, krok 1 możesz pominąć i nadrobić później:
 
@@ -423,7 +439,7 @@ cli/awesome_cli.py   # CLI
 cli/tui.py           # TUI (curses)
 web/app.py           # Flask UI
 web/templates/       # szablony Jinja2
-tests/smoke_test.py  # 91 testy (CI)
+tests/smoke_test.py  # 96 testy (CI)
 ```
 
 </details>

@@ -13,13 +13,13 @@ stąd `--wide` łączy kilka zapytań (union).
 """
 
 import json
-import os
-import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+from core import api
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "offline-db" / "data"
@@ -39,46 +39,6 @@ QUERIES_WIDE = [
 PER_PAGE = 100
 MAX_PAGES = 10          # GitHub Search oddaje maks. 1000 wyników na zapytanie
 PAUSE = 0.3             # uprzejmość dla raw.githubusercontent
-
-
-def gh_token():
-    env = os.environ.get("GITHUB_TOKEN")
-    if env:
-        return env.strip()
-    try:
-        done = subprocess.run(["gh", "auth", "token"], capture_output=True,
-                              text=True, timeout=5)
-        if done.returncode == 0:
-            return done.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return ""
-
-
-def gh_api(endpoint, token, retries=3):
-    """Jedno zapytanie do API. Zwraca dict albo None przy błędzie/rate limicie."""
-    args = ["gh", "api", endpoint, "-H", "Accept: application/vnd.github+json"]
-    if token:
-        args += ["-H", f"Authorization: bearer {token}"]
-    for attempt in range(1, retries + 1):
-        try:
-            done = subprocess.run(args, capture_output=True, text=True, timeout=60)
-        except (OSError, subprocess.SubprocessError):
-            return None
-        if done.returncode == 0 and done.stdout.strip():
-            try:
-                return json.loads(done.stdout)
-            except ValueError:
-                return None
-        err = done.stderr.replace("\n", " ")
-        if "rate limit" in err.lower():
-            print(f"    Rate limit GitHuba — czekam 120s (próba {attempt}/{retries})",
-                  flush=True)
-            time.sleep(120)
-            continue
-        print(f"    Nieudana próba {attempt}/{retries}: {err[:100]}", flush=True)
-        time.sleep(5 * attempt)
-    return None
 
 
 def fetch_readme(full_name, token):
@@ -149,9 +109,13 @@ def merge_index(items, downloaded, token):
 def download(topic="awesome-list", wide=True, refresh=False, sort="stars",
              start_page=1, verbose=True, limit=None):
     """Główna pętla. Zwraca (status, nowe, pominięte, bez_readme)."""
-    token = gh_token()
-    if not token and verbose:
-        print("[*] Brak tokena GitHub — zaloguj: gh auth login")
+    token = api.token()
+    if verbose:
+        print(f"[*] GitHub: {api.describe()}")
+        if api.search_pause():
+            print("[*] Bez logowania czekam między stronami, bo GitHub "
+                  "dopuszcza 10 zapytań na minutę. Można przyspieszyć: "
+                  "gh auth login")
     README_DIR.mkdir(parents=True, exist_ok=True)
     queries = [f"topic:{topic}"] + (QUERIES_WIDE[1:] if wide else [])
     new = skipped = missing = 0
@@ -161,12 +125,10 @@ def download(topic="awesome-list", wide=True, refresh=False, sort="stars",
     for query in queries:
         seen_first = None
         for page in range(start_page, MAX_PAGES + 1):
-            sort_part = f"&sort={sort}&order=desc" if sort else ""
-            endpoint = (f"search/repositories?q={query}&per_page={PER_PAGE}"
-                        f"&page={page}{sort_part}")
             if verbose:
                 print(f"\n[*] {query} — strona {page}", flush=True)
-            payload = gh_api(endpoint, token)
+            payload = api.search_repositories(query, page=page, per_page=PER_PAGE,
+                                              sort=sort)
             if payload is None:
                 return 1, new, skipped, missing
             items = payload.get("items") or []

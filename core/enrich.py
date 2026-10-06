@@ -268,6 +268,26 @@ def save(conn, records):
 
 def enrich(limit=None, verbose=True, batch_size=BATCH_SIZE, pause=PAUSE,
            priority=True):
+    """Metadane repozytoriów narzędzi. Wymaga zalogowania do GitHuba.
+
+    GraphQL bez tokena nie działa w ogóle, więc zamiast cicho zwracać zero
+    mówię wprost, czego brakuje i że ranking od tego nie zależy.
+    """
+    import shutil
+
+    if not shutil.which("gh"):
+        if verbose:
+            print("Pomijam enrich: pobieranie metadanych wymaga GitHub CLI (gh).")
+            print("  Bez tego ranking nadal działa — opiera się na zgodzie kuratorów.")
+            print("  Żeby dociągnąć prawdziwe gwiazdki: zainstaluj gh, potem "
+                  "gh auth login")
+        return 0
+    if not github_token():
+        if verbose:
+            print("Pomijam enrich: GitHub wymaga logowania dla GraphQL.")
+            print("  Bez tego ranking nadal działa — opiera się na zgodzie kuratorów.")
+            print("  Żeby dociągnąć prawdziwe gwiazdki: gh auth login")
+        return 0
     token = github_token()
     if not token and verbose:
         print("Uwaga: brak tokena — batch po 1 (wolno). Zaloguj gh CLI albo ustaw GITHUB_TOKEN.")
