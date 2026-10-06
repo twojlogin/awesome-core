@@ -16,7 +16,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from core import aliases, api, clones, doctor, fetcher, langmap, md, mcp, parser, scoring, untrusted  # noqa: E402
+from core import aliases, api, clones, doctor, fetcher, langmap, md, mcp, parser, poisoning, scoring, untrusted  # noqa: E402
 from core.builder import build  # noqa: E402
 from core.database import AwesomeDB  # noqa: E402
 from core import status as status_mod  # noqa: E402
@@ -983,6 +983,115 @@ class TestNoAIinCore(unittest.TestCase):
                 continue
             self.assertNotIn("jsonrpc", path.read_text(encoding="utf-8").lower(),
                              f"{path.name} zajmuje się protokołem MCP")
+
+
+class TestPoisoningDetection(unittest.TestCase):
+    """Fałszywa lista nie może wejść do katalogu niezauważona.
+
+    Wymóg właściciela: „nie wypuszczamy oszustwa". Katalog powstaje z cudzych
+    repozytoriów, więc ktoś może celowo wstawić listę, która zbiera wejścia.
+    Testy budują taką listę i sprawdzają, że system ją widzi — zamiast
+    ufać, że „wyszukiwanie nic nie znajdzie".
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp())
+        cls.data_dir = cls.tmp / "data"
+        cls.data_dir.mkdir(parents=True)
+        from core import store
+
+        store.connect(cls.data_dir).close()      # tworzy schemat
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def setUp(self):
+        # Każdy test startuje od czystej bazy: poprzedni zostawiał 30 wierszy
+        # i następny liczył je jako swoje, przez co jeden test padał bez powodu.
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        conn.execute("DELETE FROM tools")
+        conn.execute("DELETE FROM repos")
+        conn.commit()
+        conn.close()
+
+    def _db_with_poisoned_list(self, stars=0, owners=1, tools=30, dead=False,
+                              name="evil/awesome-tools"):
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        conn.execute(
+            "INSERT OR REPLACE INTO repos (full_name, owner, name, url, stars,"
+            " description, unique_tool_count) VALUES (?,?,?,?,?,?,?)",
+            (name, name.split("/")[0], name.split("/")[1],
+             f"https://github.com/{name}", stars, "", tools))
+        for i in range(tools):
+            owner = "attacker" if owners == 1 else f"host{i}"
+            alive = 0 if dead else 1
+            conn.execute(
+                "INSERT OR REPLACE INTO tools (name, name_norm, url, url_norm,"
+                " host, description, source_repo, alive, lists_count, score)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (f"tool{i}", f"tool{i}".lower(), f"https://github.com/{owner}/t{i}",
+                 f"github.com/{owner}/t{i}", "github.com", "x", name, alive, 1, 50))
+        conn.commit()
+        return conn
+
+    def test_zero_stars_with_many_tools_is_flagged(self):
+        conn = self._db_with_poisoned_list()
+        verdict = poisoning.assess_list(conn, "evil/awesome-tools")
+        conn.close()
+        self.assertEqual(verdict["status"], "warto sprawdzić")
+        self.assertTrue(any("0 gwiazdek" in w for w in verdict["attention"]))
+
+    def test_honest_list_with_stars_is_not_flagged(self):
+        conn = self._db_with_poisoned_list(stars=1200, owners=6, tools=12)
+        verdict = poisoning.assess_list(conn, "evil/awesome-tools")
+        conn.close()
+        self.assertEqual(verdict["status"], "brak szczególnych sygnałów",
+                         verdict["attention"])
+
+    def test_single_owner_spray_is_flagged(self):
+        conn = self._db_with_poisoned_list(stars=900, owners=1, tools=25)
+        verdict = poisoning.assess_list(conn, "evil/awesome-tools")
+        conn.close()
+        self.assertTrue(any("jednego właściciela" in w for w in verdict["attention"]))
+
+    def test_link_farm_is_flagged(self):
+        conn = self._db_with_poisoned_list(stars=900, owners=20, tools=40, dead=True)
+        verdict = poisoning.assess_list(conn, "evil/awesome-tools")
+        conn.close()
+        self.assertTrue(any("nie żyje" in w for w in verdict["attention"]))
+
+    def test_scan_lists_finds_planted_list(self):
+        conn = self._db_with_poisoned_list()
+        flagged = poisoning.scan_lists(conn, min_tools=10)
+        conn.close()
+        self.assertIn("evil/awesome-tools", [f["full_name"] for f in flagged])
+
+    def test_lookalike_urls_are_flagged(self):
+        for url, expected in (
+            ("github.com@evil.tld/x", "@"),
+            ("githvb.com/a/b", "wygląda jak"),
+            ("http://github.com/a/b", "szyfrowania"),
+            ("xn--80ak6aa92e.com/x", "punycode"),
+            ("1.2.3.4/x", "IP"),
+        ):
+            flags = poisoning.url_risks(url)
+            self.assertTrue(any(expected in f for f in flags),
+                            f"{url} nie dał sygnału: {flags}")
+
+    def test_legit_urls_stay_quiet(self):
+        """Za ciasne alarmy są bezużyteczne — 1608 fałszywych na 186k narzędzi
+        sprawiło, że nikt by tego nie używał."""
+        for url in ("github.com/psf/requests", "pypi.org/project/requests",
+                    "gnome.pages.gitlab.gnome.org/rygel",
+                    "observablehq.com/@kto/coś",
+                    "docs.python.org/3/library/sqlite3.html"):
+            self.assertEqual(poisoning.url_risks(url), [], url)
 
 
 class TestUntrusted(unittest.TestCase):

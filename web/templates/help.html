@@ -147,6 +147,22 @@ i nic nie zapisuje.</p>
   <li>Linki poza GitHubem sprawdzamy tylko jawnie: <code>./awesome validate --non-github --limit 500</code>.</li>
 </ul>
 
+<h2>Czy katalog można zatruć?</h2>
+<p class="muted small">Katalog powstaje z cudzych repozytoriów, więc ktoś może
+celowo wstawić fałszywą listę, która zbiera wejścia. Jedna komenda mówi, które
+listy wyglądają podejrzanie:</p>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome audit                       # 0 gwiazdek przy wielu linkach, jeden właściciel,
+                                     # martwe linki, klony, podszywane domeny
+./awesome audit owner/repo            # audyt jednego repozytorium
+</pre>
+<p class="small"><b>To nie jest skaner złośliwego oprogramowania.</b> Sygnał mówi
+„obejrzyć ręcznie", nie „złośliwe". Stan na 6 października 2026: 7 list
+wartych obejrzenia, 1 podejrzany link, zero potwierdzonych ataków. Ranking broni
+się sam: narzędzie musi mieć zgodę dwóch niezależnych list, a kopie się nie
+liczą. Opisy z obcych list trafiające do modelu przechodzą przez filtr
+prompt-injection.</p>
+
 <h2>Bezpieczeństwo</h2>
 <p class="muted small">Sygnały przy repozytoriach (archiwalne, dawno nieaktualizowane)
 to wskazówki do sprawdzenia, a nie etykieta bezpieczeństwa. Zawsze przejrzyj kod

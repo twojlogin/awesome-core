@@ -161,6 +161,8 @@ Jeśli masz mało czasu, krok 1 możesz pominąć i nadrobić później:
 ./awesome domains                                  # tematy: osint, security, network...
 ./awesome why nmap                                 # skąd ten wynik — punkt po punkcie
 ./awesome mentions nmap                            # w ilu listach jest to narzędzie
+./awesome audit                                    # czy katalog nie jest zatruty fałszywymi listami
+./awesome audit sindresorhus/awesome               # audyt jednego repozytorium
 ./awesome lists                                    # najlepsze listy
 ./awesome info nmap                                # dane + komenda instalacji
 ./awesome install nmap                             # zainstaluj (git clone)
@@ -366,6 +368,55 @@ Z tego wynika reszta decyzji:
 
 ---
 
+## Czy katalog można zatruć — i co z tym robimy
+
+Katalog powstaje z **cudzych repozytoriów**. To znaczy, że ktoś może celowo
+wstawić fałszywą listę, która zbiera wejścia, a jej „narzędzia" prowadzą do
+podszywanych domen albo do szkodliwego kodu. **Czy to się zdarzyło?**
+
+```bash
+./awesome audit
+```
+
+Stan na dziś (6 października 2026, 1 032 listy, 186 861 narzędzi): **7 list
+warte obejrzenia, 1 podejrzany link**. Zero potwierdzonych ataków.
+
+Co sygnał ma złapać:
+
+| Sygnał | Dlaczego podejrzane |
+|---|---|
+| dużo narzędzi przy **0 gwiazdek** | twórca dopiero zaczął — nie ma reputacji do stracenia |
+| **jeden właściciel** dla wielu linków | to nie katalog, tylko linki do jednego projektu |
+| dużo **martwych linków** | farma linków, nie treść |
+| niedawno utworzone repo + dużo narzędzi | kampania, nie dorobek |
+| **klon** innej listy | kopiowanie zamiast budowania |
+| link typu `github.com@evil.tld`, `githvb.com`, adres IP, punycode | podszywanie domeny |
+
+Przykładowe trafienie z naszej bazy: `laoma2053/awesome-zhuiju-free` — 25 narzędzi,
+**0 gwiazdek**, brak opisu, żaden link nie potwierdzony przez inną listę.
+
+Czego **nie** robimy i dlaczego warto to wiedzieć:
+
+- **To nie jest skaner złośliwego oprogramowania.** Nie rozpoznajemy droppera
+  w repozytorium ani złośliwego kodu w kodzie narzędzia. Nie obiecujemy, że
+  przepuścimy wszystko.
+- **Sygnały nie są wyrokiem.** Flag oznacza „obejrzyć ręcznie", nie „złośliwe".
+  Trzy z siedmiu trafień okazały się uczciwymi, choć dziwnymi listami.
+- **Ranking już się przed tym broni**: narzędzie potrzebuje zgody co najmniej
+  dwóch niezależnych list, a kopie list nie liczą się do tej zgody. Jedna
+  nowa fałszywa lista nie wypchnie niczego na szczyt.
+- **`awesome install` to tylko `git clone`.** Nie uruchamia skryptów, nie pyta
+  o hasło do Twojego GitHuba, nie wykonuje kodu zdalnego repozytorium. Ale
+  potem **to Ty** decydujesz, co z tym kodem zrobisz — i tego program nie
+  kontroluje.
+- **Opisy z obcych list trafiają do kontekstu modelu przez MCP**, więc są
+  przepuszczane przez `core/untrusted.py` (patrz sekcja o bezpieczeństwie).
+
+Najprostsza zasada: narzędzie z jednej nowej listy, o którym nigdy nie
+słyszałeś, to znak sprawdzenia — nie polecenia instalacji.
+
+---
+
 ## Czego nie wiem — słowniczek
 
 | Słowo | Co to znaczy |
@@ -439,7 +490,7 @@ cli/awesome_cli.py   # CLI
 cli/tui.py           # TUI (curses)
 web/app.py           # Flask UI
 web/templates/       # szablony Jinja2
-tests/smoke_test.py  # 96 testy (CI)
+tests/smoke_test.py  # 103 testy (CI)
 ```
 
 </details>

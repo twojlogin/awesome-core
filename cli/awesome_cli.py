@@ -29,6 +29,8 @@ Listy i fasetki:
   awesome lists                       — najlepsze listy wg jakości
   awesome clones                      — kopie i forki list (wpływ na ranking)
   awesome untrusted                   — skan opisów pod kątem prompt injection
+awesome audit                       — czy katalog nie jest zatruty fałszywymi listami
+awesome audit owner/repo            — audyt jednego repozytorium
   awesome mcp                         — serwer MCP (stdio) dla lokalnych agentów
   awesome mcp --demo                  — pokaż wymianę JSON-RPC
   awesome list <owner/repo>           — narzędzia z listy
@@ -901,6 +903,51 @@ def cmd_validate(limit=None, non_github=False):
     print(f"  czas: {report['seconds']}s")
 
 
+def cmd_catalog_audit(args):
+    """Lista i linki, które wyglądają jak zatrucie katalogu.
+
+    To NIE jest skaner złośliwego oprogramowania. Robimy jedno uczciwie:
+    z danych, które już mamy lokalnie, wypisujemy listy, które nie wyglądają
+    na katalog narzędzi (0 gwiazdek przy setkach linków, jedna domena zamiast
+    katalogu, martwe linki, klon), oraz linki podszywające się pod zaufane
+    domeny. Każdy wiersz da się sprawdzić ręcznie.
+    """
+    from core import poisoning, store
+
+    limit = _limit_from(args, 20)
+    conn = store.connect(BASE_DIR / "data", read_only=True)
+    min_tools = 20
+    if "--min-tools" in args and args.index("--min-tools") + 1 < len(args):
+        try:
+            min_tools = max(1, int(args[args.index("--min-tools") + 1]))
+        except ValueError:
+            min_tools = 20
+
+    lists = poisoning.scan_lists(conn, min_tools=min_tools, limit=limit)
+    print(f"\nListy z >= {min_tools} narzędziami, które warto obejrzeć "
+          f"(sprawdziłem {len(lists)}):\n")
+    if not lists:
+        print("  Nic nie wygląda na rozrzucanie linków.")
+    for item in lists:
+        print(f"  {item['full_name']}  ({item['tools']} narzędzi, ★{item['stars']})")
+        for warning in item["attention"]:
+            print(f"      ⚠ {warning}")
+        for note in item["info"]:
+            print(f"      · {note}")
+
+    risky = poisoning.scan_tools(conn, limit=10)
+    print(f"\nLinki wyglądające jak podszywanie domen ({len(risky)}):\n")
+    if not risky:
+        print("  Brak.")
+    for item in risky:
+        print(f"  {item['url']}")
+        print(f"      {', '.join(item['flags'])} — z listy {item['source_repo']}")
+
+    print("\nTo są wskazówki do ręcznego sprawdzenia, nie werdykt bezpieczeństwa.")
+    print("Żaden skaner nie gwarantuje, że czegoś nie przepuści.")
+    conn.close()
+
+
 def cmd_untrusted():
     """Skan bazy pod kątem tekstu wyglądającego na instrukcje (prompt injection).
 
@@ -1141,9 +1188,14 @@ def main():
     elif cmd == "random":
         tools_db, _, _ = dbs()
         cmd_random(tools_db)
-    elif cmd == "audit" and args:
-        _, repo_db, _ = dbs()
-        cmd_audit(repo_db, args[0], online="--online" in args)
+    elif cmd == "audit":
+        # Bez argumentu: czy katalog nie jest zatruty fałszywymi listami.
+        # Z argumentem (jak dawniej): audyt jednego repozytorium.
+        if args and not args[0].startswith("-"):
+            _, repo_db, _ = dbs()
+            cmd_audit(repo_db, args[0], online="--online" in args)
+        else:
+            cmd_catalog_audit(args)
     elif cmd == "watch":
         cmd_watch(args)
     elif cmd == "stats":

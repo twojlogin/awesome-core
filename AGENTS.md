@@ -9,7 +9,7 @@ Katalog narzędzi z awesome list — skala i liczby są w README, sekcja
 „Co jest w środku". **Nie powielaj ich tutaj**: zestarzały się już raz
 (1 026 → 1 032 list) i pilnuje tego test, nie komentarz.
 Baza `data/awesome.db` jest generowana, nigdy nie w repo. Kod: ~8,8k linii
-Pythona, 96 testy, jedna zależność zewnętrzna (flask, tylko web UI).
+Pythona, 103 testy, jedna zależność zewnętrzna (flask, tylko web UI).
 
 Weryfikacja stanu: `./awesome status`. Nic nie działa samo — brak cronów,
 daemonów i procesów w tle.
@@ -54,7 +54,16 @@ bezwartościowy. Test ma złapać konkretny błąd, który się zdarzył:
 `--out` jako ścieżka do pliku. Bugi wyłapane przez testy są tańsze niż
 znalezione przez użytkownika.
 
-**8. Uczciwe liczby.** Nie zaokrąglamy w górę, nie mieszamy narzędzi
+**8. Katalog budujemy z cudzego, więc zakładamy zatrucie.** `core/poisoning.py`
+liczy, które listy wyglądają jak rozrzucanie linków (0 gwiazdek przy wielu
+narzędziach, jeden właściciel, martwe linki, klon) i które linki podszywają
+się pod zaufane domeny. Pilnuje tego `TestPoisoningDetection`, który sadza
+fałszywą listę i wymaga, żeby ją widział. **Nie wolno rozluźniać progów,
+żeby „nie było fałszywych alarmów"** — na bazie alarmów jest 7 na 1 032 listy,
+czyli mało, a na rozluźnionych było 1608 na 186k narzędzi, czyli nikt by tego
+nie czytał. Nigdy nie przedstawiaj tego skanu jako gwarancji.
+
+**9. Uczciwe liczby.** Nie zaokrąglamy w górę, nie mieszamy narzędzi
 z repozytoriami, nie nazywamy 3 206 martwych repo „udanymi". `status` mówi
 „repozytoriów do odpytania", nie „narzędzi bez gwiazdek" — bo ponad 75 tys. wpisów to
 artykuły i filmy, których gwiazdek nie da się mieć.
@@ -79,8 +88,9 @@ artykuły i filmy, których gwiazdek nie da się mieć.
 ## Jak sprawdzić, czy nie zepsuliśmy
 
 ```bash
-python3 tests/smoke_test.py      # 96 testy, ~35 s
+python3 tests/smoke_test.py      # 103 testy, ~35 s
 python3 -m flake8 --select=E9,F63,F7,F82 --max-line-length=120 core/ cli/ web/ tests/
 ./awesome status                 # stan danych i co ewentualnie odświeżyć
 ./awesome untrusted              # skan opisów pod prompt injection
+./awesome audit                  # listy i linki, które mogą zatruć katalog
 ```
