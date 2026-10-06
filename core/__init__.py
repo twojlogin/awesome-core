@@ -1,1 +1,1 @@
-from .database import AwesomeDB
+from core.database import AwesomeDB  # noqa: F401

@@ -1,241 +1,106 @@
 #!/usr/bin/env python3
-"""Parse awesome list READMEs and extract individual tools with descriptions."""
+"""extract_tools.py — buduje data/awesome.db z pobranych README.
 
-import os
-import re
-import json
-import csv
-import logging
+Użycie:
+    python3 extract_tools.py                 # pełny build
+    python3 extract_tools.py --export json   # dodatkowo data/tools.json
+    python3 extract_tools.py --export csv    # dodatkowo data/tools.csv
+"""
+
+import argparse
+import sys
 from pathlib import Path
-from collections import defaultdict
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from core import store  # noqa: E402
+from core.builder import build  # noqa: E402
 
 
-README_DIR = Path(__file__).parent / "offline-db" / "data" / "readmes"
-INDEX_FILE = Path(__file__).parent / "offline-db" / "data" / "index.json"
-TOOLS_FILE = Path(__file__).parent / "data" / "tools.json"
-TOOLS_CSV = Path(__file__).parent / "data" / "tools.csv"
-SEARCH_INDEX_FILE = Path(__file__).parent / "data" / "search_index.json"
-SUMMARY_FILE = Path(__file__).parent / "data" / "summary_enriched.csv"
-LOGGER = logging.getLogger(__name__)
+EXPORTABLE = {"json": "data/tools.json", "csv": "data/tools.csv"}
 
 
-def load_repo_stars():
-    """Load star counts from summary_enriched.csv."""
-    stars = {}
-    if SUMMARY_FILE.exists():
-        with open(SUMMARY_FILE) as f:
-            for row in csv.DictReader(f):
-                name = row.get("full_name", "").lower()
-                s = int(row.get("stars", 0) or 0)
-                stars[name] = s
-    if INDEX_FILE.exists():
-        with open(INDEX_FILE, encoding="utf-8") as f:
-            for name, meta in json.load(f).items():
-                stars.setdefault(name.lower(), int(meta.get("stars", 0) or 0))
-    return stars
+def print_stats(conn):
+    print("\nRanking języków (narzędzia):")
+    for lang, count in conn.execute(
+        "SELECT lang, COUNT(*) c FROM tools GROUP BY lang ORDER BY c DESC LIMIT 12"
+    ):
+        print(f"  {count:>7}  {lang}")
+
+    print("\nPlatformy:")
+    for platform, count in conn.execute(
+        "SELECT platform, COUNT(*) c FROM tools WHERE platform != ''"
+        " GROUP BY platform ORDER BY c DESC LIMIT 12"
+    ):
+        print(f"  {count:>7}  {platform}")
+
+    print("\nDomeny:")
+    for domain, count in conn.execute(
+        "SELECT tags, COUNT(*) c FROM tools GROUP BY tags ORDER BY c DESC LIMIT 8"
+    ):
+        print(f"  {count:>7}  {domain}")
+
+    print("\nNajlepsze listy (jakość):")
+    for row in conn.execute(
+        "SELECT full_name, stars, quality, unique_tool_count FROM repos"
+        " WHERE unique_tool_count > 0 ORDER BY quality DESC, stars DESC LIMIT 10"
+    ):
+        print(f"  {row['quality']:.2f}  {row['stars']:>7}★  {row['unique_tool_count']:>5}  {row['full_name']}")
 
 
-def load_repo_metadata():
-    """Load repository metadata captured during the GitHub download."""
-    if not INDEX_FILE.exists():
-        return {}
-    with open(INDEX_FILE, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def extract_tools_from_readme(content, repo_name):
-    """Extract individual tools/links from a README."""
-    tools = []
-    lines = content.split("\n")
-    current_section = ""
-    current_subsection = ""
-
-    for line in lines:
-        stripped = line.strip()
-
-        if stripped.startswith("## ") and not stripped.startswith("### "):
-            current_section = stripped[3:].strip()
-            current_section = re.sub(r'\[.*?\]\(.*?\)', '', current_section).strip()
-            current_section = re.sub(r'[#!@$%^&*()]', '', current_section).strip()
-            continue
-
-        if stripped.startswith("### "):
-            current_subsection = stripped[4:].strip()
-            current_subsection = re.sub(r'\[.*?\]\(.*?\)', '', current_subsection).strip()
-            current_subsection = re.sub(r'[#!@$%^&*()]', '', current_subsection).strip()
-            continue
-
-        match = re.match(r'^[\-\*]\s+\[([^\]]+)\]\(([^)]+)\)\s*[-–—]?\s*(.*)', stripped)
-        if match:
-            name = match.group(1).strip()
-            url = match.group(2).strip()
-            desc = match.group(3).strip()
-            desc = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', desc).strip()
-            desc = desc.rstrip('.')
-
-            if url.startswith("http") and name and len(name) > 1:
-                tools.append({
-                    "name": name,
-                    "url": url,
-                    "description": desc[:200],
-                    "section": current_section,
-                    "subsection": current_subsection,
-                    "source_repo": repo_name,
-                })
-            continue
-
-        match2 = re.match(r'^[\-\*]\s+\[([^\]]+)\]\(([^)]+)\)\s*$', stripped)
-        if match2:
-            name = match2.group(1).strip()
-            url = match2.group(2).strip()
-            if url.startswith("http") and name and len(name) > 1:
-                tools.append({
-                    "name": name,
-                    "url": url,
-                    "description": "",
-                    "section": current_section,
-                    "subsection": current_subsection,
-                    "source_repo": repo_name,
-                })
-
-    return tools
-
-
-def filter_tools(tools, repo_stars, repo_metadata=None):
-    """Filter low quality and duplicates, add stars."""
-    seen_urls = {}
-    filtered = []
-
-    for tool in tools:
-        url = tool["url"].rstrip("/").lower()
-
-        # Skip duplicates (keep first occurrence = from most popular repo)
-        if url in seen_urls:
-            continue
-        seen_urls[url] = True
-
-        # Skip tools with no description or very short
-        desc = tool.get("description", "")
-        if desc and len(desc) < 5:
-            continue
-
-        # Skip tools with generic names
-        name = tool.get("name", "")
-        if name.lower() in ["home", "readme", "table of contents", "contents", "toc", "license", "contributing"]:
-            continue
-
-        # Add source stars
-        repo_lower = tool.get("source_repo", "").lower()
-        tool["source_stars"] = repo_stars.get(repo_lower, 0)
-        metadata = (repo_metadata or {}).get(tool.get("source_repo", ""), {})
-        tool["source_forks"] = int(metadata.get("forks", 0) or 0)
-        tool["source_language"] = metadata.get("language", "")
-        tool["source_topics"] = metadata.get("topics", "")
-        for field in ("created_at", "pushed_at", "archived", "license"):
-            tool[f"source_{field}"] = metadata.get(field, "")
-
-        # Skip tools from repos with < 5 stars (probably junk)
-        # But keep if it has a good description
-        if tool["source_stars"] < 5 and not desc:
-            continue
-
-        filtered.append(tool)
-
-    return filtered
-
-
-def build_search_index(tools):
-    """Build the word-to-tool index used by ToolsDB."""
-    index = defaultdict(list)
-    for i, tool in enumerate(tools):
-        text = f"{tool.get('name', '')} {tool.get('description', '')}"
-        words = set()
-        for word in text.lower().split():
-            word = word.strip('.,;:!?()[]{}"\' -/')
-            if len(word) >= 2:
-                words.add(word)
-        for word in words:
-            index[word].append(i)
-    return dict(index)
-
-
-def main():
-    print("Loading README index...")
-    with open(INDEX_FILE) as f:
-        index = json.load(f)
-
-    print(f"Found {len(index)} READMEs to parse")
-
-    repo_stars = load_repo_stars()
-    repo_metadata = load_repo_metadata()
-    print(f"Loaded stars for {len(repo_stars)} repos")
-
-    all_tools = []
-
-    for i, (repo_name, meta) in enumerate(index.items()):
-        readme_path = README_DIR / f"{meta['owner']}__{meta['name']}.md"
-        if not readme_path.exists():
-            continue
-
-        try:
-            content = readme_path.read_text(encoding="utf-8", errors="replace")
-            tools = extract_tools_from_readme(content, repo_name)
-            all_tools.extend(tools)
-        except (OSError, UnicodeError, KeyError, ValueError) as exc:
-            LOGGER.warning("Could not parse %s: %s", repo_name, exc)
-
-        if (i + 1) % 200 == 0:
-            print(f"  Parsed {i+1}/{len(index)} READMEs, {len(all_tools)} raw tools")
-
-    print(f"\nRaw tools: {len(all_tools)}")
-
-    # Filter
-    filtered = filter_tools(all_tools, repo_stars, repo_metadata)
-    filtered.sort(
-        key=lambda tool: (
-            int(tool.get("source_stars", 0) or 0),
-            bool(tool.get("description")),
-            tool.get("name", "").lower(),
-        ),
-        reverse=True,
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Build Awesome Core SQLite database")
+    parser.add_argument(
+        "--export",
+        choices=sorted(EXPORTABLE),
+        help="dodatkowy eksport do data/tools.json lub data/tools.csv",
     )
-    print(f"After filter: {len(filtered)}")
+    parser.add_argument("--export-out", help="ścieżka eksportu (zamiast domyślnej)")
+    parser.add_argument("--export-limit", type=int, help="maksymalna liczba wierszy w eksporcie")
+    parser.add_argument("--quiet", action="store_true", help="bez logowania postępu")
+    parser.add_argument("--stats", action="store_true", help="pokaż tylko statystyki bazy")
+    parser.add_argument("--vacuum", action="store_true", help="przepakuj bazę (wolniejsze)")
+    args = parser.parse_args(argv)
 
-    # Save as JSON
-    with open(TOOLS_FILE, "w", encoding="utf-8") as f:
-        json.dump(filtered, f, indent=2, ensure_ascii=False)
-    print(f"Saved to {TOOLS_FILE}")
+    base = Path(__file__).parent
 
-    # Save as CSV
-    fields = [
-        "name", "url", "description", "section", "subsection", "source_repo",
-        "source_stars", "source_forks", "source_language", "source_topics",
-        "source_created_at", "source_pushed_at", "source_archived", "source_license",
-    ]
-    with open(TOOLS_CSV, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(filtered)
-    print(f"Saved to {TOOLS_CSV}")
+    if args.stats:
+        if not store.db_ready(base / "data"):
+            print("Brak bazy. Uruchom: python3 extract_tools.py")
+            return 1
+        conn = store.connect(base / "data")
+        print_stats(conn)
+        conn.close()
+        return 0
 
-    with open(SEARCH_INDEX_FILE, "w", encoding="utf-8") as f:
-        json.dump(build_search_index(filtered), f, ensure_ascii=False)
-    print(f"Saved to {SEARCH_INDEX_FILE}")
+    export = None
+    if args.export:
+        export = args.export_out or (base / EXPORTABLE[args.export])
 
-    # Stats
-    print(f"\nStats:")
-    sections = defaultdict(int)
-    for t in filtered:
-        if t["section"]:
-            sections[t["section"]] += 1
+    print("Buduję bazę z offline-db/data/readmes...")
+    summary = build(
+        data_dir=base / "data",
+        verbose=not args.quiet,
+        export=export,
+        export_limit=args.export_limit,
+        index_file=base / "offline-db" / "data" / "index.json",
+        readme_dir=base / "offline-db" / "data" / "readmes",
+        vacuum=args.vacuum,
+    )
 
-    print(f"Top sections:")
-    for sec, count in sorted(sections.items(), key=lambda x: -x[1])[:15]:
-        print(f"  {sec:40s} {count}")
+    print(
+        f"\nGotowe w {summary['seconds']}s: {summary['tools']} narzędzi, "
+        f"{summary['mentions']} wystąpień w {summary['lists']} listach "
+        f"({summary['lists_with_meta']} z metadanymi), {summary['langs']} języków"
+    )
 
-    with_stars = sum(1 for t in filtered if t.get("source_stars", 0) > 0)
-    print(f"\nWith stars: {with_stars}/{len(filtered)}")
+    if not args.quiet:
+        conn = store.connect(base / "data")
+        print_stats(conn)
+        conn.close()
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

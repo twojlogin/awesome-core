@@ -3,59 +3,58 @@
 
 import json
 import subprocess
-import os
 from pathlib import Path
-from collections import defaultdict
 from urllib.parse import urlparse
 
 
 class ToolCurator:
+
     def __init__(self, data_dir=None):
         if data_dir is None:
             data_dir = Path(__file__).parent.parent / "data"
         self.data_dir = Path(data_dir)
-        self.tools_file = self.data_dir / "tools.json"
         self.collections_file = self.data_dir / "collections.json"
         self.installed_file = self.data_dir / "installed.json"
-        
-        self.tools = []
+
+        self._db = None
+        self._tools = None
         self.collections = {}
         self.installed = {}
-        
+
         self._load()
-    
+
     def _load(self):
-        if self.tools_file.exists():
-            self.tools = json.loads(self.tools_file.read_text())
-        
         if self.collections_file.exists():
             self.collections = json.loads(self.collections_file.read_text())
-        
+
         if self.installed_file.exists():
             self.installed = json.loads(self.installed_file.read_text())
-    
+
     def _save_collections(self):
         self.collections_file.write_text(json.dumps(self.collections, indent=2, ensure_ascii=False))
-    
+
     def _save_installed(self):
         self.installed_file.write_text(json.dumps(self.installed, indent=2, ensure_ascii=False))
-    
+
+    @property
+    def db(self):
+        if self._db is None:
+            from core.tools_db import ToolsDB
+
+            self._db = ToolsDB(self.data_dir)
+        return self._db
+
+    @property
+    def tools(self):
+        """Pełna lista narzędzi (tylko gdy ktoś naprawdę jej potrzebuje)."""
+        return self.db.tools
+
     def get_tool_by_name(self, name):
-        name_lower = name.lower()
-        for tool in self.tools:
-            if tool.get("name", "").lower() == name_lower:
-                return tool
-            if tool.get("url", "").lower().endswith(f"/{name_lower}"):
-                return tool
-        return None
-    
+        return self.db.tool_by_name(name)
+
     def get_tool_by_url(self, url):
-        url_lower = url.lower().rstrip("/")
-        for tool in self.tools:
-            if tool.get("url", "").lower().rstrip("/") == url_lower:
-                return tool
-        return None
-    
+        return self.db.get_tool_by_url(url)
+
     def create_collection(self, name, description, tool_names):
         self.collections[name] = {
             "description": description,
@@ -64,7 +63,7 @@ class ToolCurator:
         }
         self._save_collections()
         return True
-    
+
     def add_to_collection(self, collection_name, tool_name):
         if collection_name not in self.collections:
             return False
@@ -72,7 +71,7 @@ class ToolCurator:
             self.collections[collection_name]["tools"].append(tool_name)
             self._save_collections()
         return True
-    
+
     def remove_from_collection(self, collection_name, tool_name):
         if collection_name not in self.collections:
             return False
@@ -80,13 +79,13 @@ class ToolCurator:
             self.collections[collection_name]["tools"].remove(tool_name)
             self._save_collections()
         return True
-    
+
     def list_collections(self):
         return {name: {
             "description": info["description"],
             "tool_count": len(info["tools"])
         } for name, info in self.collections.items()}
-    
+
     def get_collection_tools(self, collection_name):
         if collection_name not in self.collections:
             return []
@@ -96,66 +95,66 @@ class ToolCurator:
             if tool:
                 tools.append(tool)
         return tools
-    
+
     def detect_install_method(self, tool):
         url = tool.get("url", "")
         if not url:
             return None
-        
+
         url_lower = url.lower()
         parsed = urlparse(url)
-        
+
         # Git repos (GitHub, GitLab, etc.)
         if parsed.scheme in {"http", "https"} and parsed.netloc.lower() in {
             "github.com", "www.github.com", "gitlab.com", "www.gitlab.com",
             "bitbucket.org", "www.bitbucket.org",
         }:
             return "git"
-        
+
         # Python packages
         if url_lower.endswith(".py") or "pypi.org" in url_lower or "pypi.python.org" in url_lower:
             return "pip"
-        
+
         # Node.js packages
         if "npmjs.com" in url_lower or "npmjs.org" in url_lower:
             return "npm"
-        
+
         # Rust packages
         if "crates.io" in url_lower:
             return "cargo"
-        
+
         # Ruby gems
         if "rubygems.org" in url_lower:
             return "gem"
-        
+
         # Go packages
         if "pkg.go.dev" in url_lower or "godoc.org" in url_lower:
             return "go"
-        
+
         # Docker
         if "hub.docker.com" in url_lower or "docker.com" in url_lower:
             return "docker"
-        
+
         # APT packages
         if "packages.ubuntu.com" in url_lower or "packages.debian.org" in url_lower:
             return "apt"
-        
+
         return None
-    
+
     def install_tool(self, tool_name, install_dir=None):
         tool = self.get_tool_by_name(tool_name)
         if not tool:
             return {"status": "error", "message": f"Tool '{tool_name}' not found"}
-        
+
         url = tool.get("url", "")
         method = self.detect_install_method(tool)
-        
+
         if install_dir is None:
             install_dir = Path.home() / ".local" / "share" / "awesome-tools"
-        
+
         install_dir = Path(install_dir)
         install_dir.mkdir(parents=True, exist_ok=True)
-        
+
         parsed = urlparse(url)
         safe_name = Path(parsed.path.rstrip("/")).name
         if not safe_name:
@@ -163,10 +162,10 @@ class ToolCurator:
         if safe_name.endswith(".git"):
             safe_name = safe_name[:-4]
         target_dir = install_dir / safe_name
-        
+
         if target_dir.exists():
             return {"status": "already_installed", "path": str(target_dir)}
-        
+
         if method == "git":
             try:
                 subprocess.run(
@@ -186,13 +185,13 @@ class ToolCurator:
                 return {"status": "error", "message": str(e.stderr)}
             except subprocess.TimeoutExpired:
                 return {"status": "error", "message": "Clone timeout"}
-        
+
         return {"status": "error", "message": f"Unknown install method: {method}"}
-    
+
     def uninstall_tool(self, tool_name):
         if tool_name not in self.installed:
             return {"status": "error", "message": "Not installed"}
-        
+
         info = self.installed[tool_name]
         path = Path(info["path"])
         install_root = Path(
@@ -202,68 +201,51 @@ class ToolCurator:
             path.resolve().relative_to(install_root)
         except ValueError:
             return {"status": "error", "message": "Refusing to remove a path outside the install directory"}
-        
+
         if path.exists():
             import shutil
             shutil.rmtree(path)
-        
+
         del self.installed[tool_name]
         self._save_installed()
         return {"status": "uninstalled"}
-    
+
     def list_installed(self):
         return self.installed
-    
+
     def search_tools(self, query, limit=50):
-        q = query.lower()
-        results = []
-        for tool in self.tools:
-            name = tool.get("name", "").lower()
-            desc = tool.get("description", "").lower()
-            url = tool.get("url", "").lower()
-            
-            score = 0
-            if q in name:
-                score += 100
-            if q in desc:
-                score += 50
-            if q in url:
-                score += 30
-            
-            if score > 0:
-                results.append((score, tool))
-        
-        results.sort(key=lambda x: x[0], reverse=True)
-        return [t for _, t in results[:limit]]
-    
+        return self.db.search(query, limit=limit)
+
     def get_popular_tools(self, limit=50):
-        tools_with_install = []
-        for tool in self.tools:
-            method = self.detect_install_method(tool)
-            if method:
-                tools_with_install.append(tool)
-        
-        tools_with_install.sort(
-            key=lambda t: len(t.get("name", "")),
-            reverse=True
-        )
-        
-        return tools_with_install[:limit]
-    
-    def get_tools_by_method(self, method):
-        return [t for t in self.tools if self.detect_install_method(t) == method]
-    
+        out = []
+        for method, _count in self.get_tools_by_method(None):
+            out.extend(self.get_tools_by_method(method, limit=limit))
+            if len(out) >= limit:
+                break
+        return out[:limit]
+
+    def get_tools_by_method(self, method, limit=200):
+        rows = self.db.conn.execute(
+            "SELECT install_method, COUNT(*) c FROM tools WHERE install_method != ''"
+            " GROUP BY install_method ORDER BY c DESC"
+        ).fetchall()
+        if method:
+            count = next((r["c"] for r in rows if r["install_method"] == method), 0)
+            if count:
+                return self.db._query(
+                    "t.install_method = ?", [method], limit=limit
+                )
+            return []
+        return [(r["install_method"], r["c"]) for r in rows]
+
     def get_stats(self):
-        methods = defaultdict(int)
-        for tool in self.tools:
-            method = self.detect_install_method(tool)
-            if method:
-                methods[method] += 1
-        
+        rows = self.get_tools_by_method(None)
+        methods = dict(rows)
+        stats = self.db.stats()
         return {
-            "total_tools": len(self.tools),
+            "total_tools": stats["total"],
             "installable": sum(methods.values()),
-            "methods": dict(methods),
+            "methods": methods,
             "collections": len(self.collections),
-            "installed": len(self.installed)
+            "installed": len(self.installed),
         }

@@ -1,192 +1,182 @@
 #!/usr/bin/env python3
-"""core/database.py - silnik Awesome DB."""
+"""core/database.py — AwesomeDB: wyszukiwanie po repozytoriach/listach (SQLite)."""
 
-import csv
-import json
 import math
 import random
-import re
-from pathlib import Path
 from collections import defaultdict
+
+from core import store
 
 
 class AwesomeDB:
     def __init__(self, data_dir=None):
-        if data_dir is None:
-            data_dir = Path(__file__).parent.parent / "data"
-        self.data_dir = Path(data_dir)
-        self.csv_path = self.data_dir / "summary_enriched.csv"
-        if not self.csv_path.exists():
-            self.csv_path = self.data_dir / "summary.csv"
-        self.index_path = (
-            Path(__file__).parent.parent / "offline-db" / "data" / "index.json"
-        )
-        self.repos = []
+        self.data_dir = data_dir
+        self._conn = None
+        self._repos = None
         self.categories = defaultdict(list)
         self.stats = {}
-        self.readme_cache = {}
-        self.readme_dir = Path(__file__).parent.parent / "offline-db" / "data" / "readmes"
-        self.readme_index = {}
-        self._load_readmes_index()
-        self.load()
 
-    def _load_readmes_index(self):
-        if not self.readme_dir.exists():
-            return
-        index_file = Path(__file__).parent.parent / "offline-db" / "data" / "index.json"
-        if index_file.exists():
-            with open(index_file) as f:
-                self.readme_index = json.load(f)
+    @property
+    def conn(self):
+        if self._conn is None:
+            if not store.db_ready(self.data_dir):
+                raise RuntimeError(
+                    "Brak bazy danych. Zbuduj ją komendą: python3 extract_tools.py"
+                )
+            self._conn = store.connect(self.data_dir, read_only=True)
+        return self._conn
 
-    def _get_readme(self, repo_name):
-        if repo_name in self.readme_cache:
-            return self.readme_cache[repo_name]
-        if repo_name not in self.readme_index:
-            return ""
-        meta = self.readme_index[repo_name]
-        readme_path = self.readme_dir / f"{meta['owner']}__{meta['name']}.md"
-        if not readme_path.exists():
-            return ""
-        try:
-            content = readme_path.read_text(encoding="utf-8", errors="replace")
-            self.readme_cache[repo_name] = content
-            return content
-        except Exception:
-            return ""
+    def close(self):
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
 
     def load(self):
-        if self.csv_path.exists():
-            with open(self.csv_path, "r", encoding="utf-8") as f:
-                self.repos = list(csv.DictReader(f))
-        elif self.index_path.exists():
-            with open(self.index_path, "r", encoding="utf-8") as f:
-                index = json.load(f)
-            self.repos = []
-            for full_name, metadata in index.items():
-                repo = dict(metadata)
-                repo["full_name"] = full_name
-                repo.setdefault("html_url", f"https://github.com/{full_name}")
-                repo.setdefault("description", "")
-                repo.setdefault("categories", "")
-                repo.setdefault("topics", "")
-                repo.setdefault("stars", 0)
-                repo.setdefault("forks", 0)
-                repo.setdefault("language", "")
-                self.repos.append(repo)
-        else:
-            return
+        self._repos = None
         self.categories = defaultdict(list)
-        for repo in self.repos:
-            cats = repo.get("categories", "")
-            for cat in cats.split(";"):
+        try:
+            rows = self.conn.execute("SELECT * FROM repos ORDER BY stars DESC").fetchall()
+        except Exception:
+            rows = []
+        self._repos = [_as_repo(dict(r)) for r in rows]
+        for repo in self._repos:
+            for cat in repo.get("categories", "").split(";"):
                 cat = cat.strip()
                 if cat:
                     self.categories[cat].append(repo)
         for cat in self.categories:
-            self.categories[cat].sort(
-                key=lambda r: int(r.get("stars") or 0), reverse=True
-            )
+            self.categories[cat].sort(key=lambda r: r.get("stars", 0), reverse=True)
         self.stats = {
-            "total": len(self.repos),
+            "total": len(self._repos),
             "categories": {k: len(v) for k, v in self.categories.items()},
         }
+        return self._repos
+
+    @property
+    def repos(self):
+        if self._repos is None:
+            self.load()
+        return self._repos
+
+    def get_repo(self, name):
+        low = (name or "").strip().lower()
+        for repo in self.repos:
+            if repo["full_name"].lower() == low:
+                return repo
+        return None
 
     def search(self, query, limit=100, min_stars=0, alive_only=False):
-        q = query.lower().strip()
+        q = (query or "").lower().strip()
         if not q:
             return []
         words = q.split()
         results = []
         for repo in self.repos:
-            name = repo.get("full_name", "").lower()
-            desc = repo.get("description", "").lower()
-            cats = repo.get("categories", "").lower()
-            lang = repo.get("language", "").lower()
-            topics = repo.get("topics", "").lower()
+            name = repo["full_name"].lower()
+            desc = (repo.get("description") or "").lower()
+            cats = (repo.get("categories") or "").lower()
+            lang = (repo.get("language") or "").lower()
             score = 0
-            match_in = set()
-            # NAME — highest priority
+            matched = []
             if q in name:
                 score += 500
-                match_in.add("name")
-            for w in words:
-                if w in name:
+                matched.append("name")
+            for word in words:
+                if word in name:
                     score += 200
-                    match_in.add("name")
-            # TOPICS
-            if q in topics:
-                score += 100
-                match_in.add("topics")
-            for w in words:
-                if w in topics:
-                    score += 40
-            # DESCRIPTION
-            if q in desc:
-                score += 80
-                match_in.add("description")
-            for w in words:
-                if w in desc:
+                    matched.append("name")
+                if word in desc:
                     score += 30
-            # CATEGORY
-            if q in cats:
-                score += 60
-                match_in.add("category")
-            for w in words:
-                if w in cats:
+                    matched.append("description")
+                if word in cats:
                     score += 25
-            # LANGUAGE
-            if q in lang:
-                score += 50
-                match_in.add("language")
-            # README — only if name/desc already matched, or exact word match
-            readme = self._get_readme(repo.get("full_name", ""))
-            if readme and score > 0:
-                readme_lower = readme.lower()
-                readme_count = readme_lower.count(q)
-                if readme_count >= 3:
-                    score += 20
-                    match_in.add("readme")
+                    matched.append("topics")
+                if word in lang:
+                    score += 50
+                    matched.append("language")
+            if repo.get("alive") is False and alive_only:
+                continue
+            if repo.get("stars", 0) < min_stars:
+                continue
             if score > 0:
-                stars = int(repo.get("stars") or 0)
-                if stars < min_stars:
-                    continue
-                alive = str(repo.get("alive", "")).lower()
-                if alive_only and alive in {"false", "0", "no"}:
-                    continue
-                star_boost = math.log10(max(stars, 1)) * 3
-                results.append((repo, score + star_boost, list(match_in)))
-        results.sort(key=lambda x: x[1], reverse=True)
-        return [(r, m) for r, s, m in results[:limit]]
+                score += math.log10(max(repo.get("stars", 0), 1)) * 3
+                results.append((repo, score, list(dict.fromkeys(matched))))
+        results.sort(key=lambda item: -item[1])
+        return [(repo, matches) for repo, _, matches in results[:limit]]
 
     def list_category(self, cat):
-        return self.categories.get(cat.lower(), [])
+        return self.categories.get((cat or "").strip(), [])
 
     def random_repo(self):
-        return random.choice(self.repos) if self.repos else None
-
-    def get_repo(self, name):
-        for repo in self.repos:
-            if repo.get("full_name", "") == name:
-                return repo
-        return None
+        if not self.repos:
+            return None
+        return random.choice(self.repos)
 
     def top_repos(self, n=10, sort_by="stars"):
+        key = "stars" if sort_by == "stars" else "quality"
         return sorted(
             self.repos,
-            key=lambda r: int(r.get("stars") or 0),
+            key=lambda r: (r.get(key, 0) or 0),
             reverse=True,
         )[:n]
 
-    def top_in_category(self, cat, n=10):
-        return self.categories.get(cat.lower(), [])[:n]
+    def best_lists(self, n=20, min_tools=5):
+        rows = self.conn.execute(
+            "SELECT full_name, quality, unique_tool_count FROM repos"
+            " WHERE unique_tool_count >= ? ORDER BY quality DESC LIMIT ?",
+            (min_tools, n),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def by_language(self, language, n=50):
+        rows = self.conn.execute(
+            "SELECT * FROM repos WHERE language = ? ORDER BY stars DESC LIMIT ?",
+            (language, n),
+        ).fetchall()
+        return [_as_repo(dict(r)) for r in rows]
+
+    def languages(self, min_lists=1):
+        return [
+            (row["language"], row["c"])
+            for row in self.conn.execute(
+                "SELECT language, COUNT(*) c FROM repos WHERE language != ''"
+                " GROUP BY language HAVING c >= ? ORDER BY c DESC",
+                (min_lists,),
+            )
+        ]
 
     def stats_summary(self):
         cats = {}
         for cat, repos in self.categories.items():
-            stars = [int(r.get("stars") or 0) for r in repos]
+            stars = [r.get("stars", 0) for r in repos]
             cats[cat] = {
                 "count": len(repos),
                 "max_stars": max(stars) if stars else 0,
                 "total_stars": sum(stars),
             }
         return {"total": len(self.repos), "categories": cats}
+
+
+def _as_repo(row):
+    topics = row.get("topics") or ""
+    repo = {
+        "full_name": row["full_name"],
+        "owner": row.get("owner", ""),
+        "name": row.get("name", ""),
+        "stars": int(row.get("stars") or 0),
+        "forks": int(row.get("forks") or 0),
+        "language": row.get("language") or "",
+        "license": row.get("license") or "",
+        "topics": topics,
+        "categories": topics,
+        "description": row.get("description") or "",
+        "html_url": row.get("url") or f"https://github.com/{row['full_name']}",
+        "created_at": row.get("created_at") or "",
+        "pushed_at": row.get("pushed_at") or "",
+        "archived": bool(row.get("archived")),
+        "quality": float(row.get("quality") or 0),
+        "tool_count": int(row.get("tool_count") or 0),
+        "unique_tool_count": int(row.get("unique_tool_count") or 0),
+    }
+    repo["alive"] = True if repo["unique_tool_count"] else None
+    return repo

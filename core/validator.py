@@ -1,188 +1,149 @@
 #!/usr/bin/env python3
-"""core/validator.py - Waliduje linki w tools.json przeciwko GitHub API."""
+"""core/validator.py — sprawdza czy linki do narzędzi wciąż działają.
+
+Dla GitHuba robi to hurtowo przez GraphQL (40 repozytoriów na zapytanie) —
+dlatego walidacja 100k linków to minuty, nie godziny. Poza GitHubem linki
+sprawdzane są opcjonalnie, pojedynczym HEAD-em.
+"""
 
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
-from collections import defaultdict
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from core import enrich, langmap, store  # noqa: E402
+
+
+BASE_DIR = Path(__file__).parent.parent
 
 
 class Validator:
     def __init__(self, data_dir=None):
-        if data_dir is None:
-            data_dir = Path(__file__).parent.parent / "data"
-        self.data_dir = Path(data_dir)
-        self.tools_file = self.data_dir / "tools.json"
+        self.data_dir = Path(data_dir) if data_dir else BASE_DIR / "data"
         self.report_file = self.data_dir / "validation_report.json"
-        self.tools = []
-        self._load()
+        self._conn = None
 
-    def _load(self):
-        if self.tools_file.exists():
-            self.tools = json.loads(self.tools_file.read_text())
+    @property
+    def conn(self):
+        if self._conn is None:
+            self._conn = store.connect(self.data_dir)
+        return self._conn
 
-    def _save(self):
-        self.tools_file.write_text(json.dumps(self.tools, indent=2, ensure_ascii=False))
+    def _github_pending(self, limit=None):
+        return enrich.missing_repos(self.conn, limit=limit)
 
-    def _get_token(self):
-        try:
-            result = subprocess.run(
-                ["gh", "auth", "token"],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                return result.stdout.strip()
-        except Exception:
-            pass
-        return None
+    def validate_all(self, limit=None, non_github=False, verbose=True):
+        """Uzupełnia brakujące metadane GitHub i (opcjonalnie) sprawdza resztę."""
+        started = time.perf_counter()
+        found = enrich.enrich(limit=limit, verbose=verbose)
+        checked_non_github = 0
+        if non_github:
+            checked_non_github = self._validate_non_github(limit=limit, verbose=verbose)
 
-    def _check_github(self, url, token=None):
-        """Check if a GitHub repo exists and get basic info."""
-        url = url.rstrip("/")
-
-        # Extract owner/repo from URL
-        if "github.com/" not in url:
-            return {"alive": False, "reason": "not_github"}
-
-        parts = url.split("github.com/")[-1].strip("/").split("/")
-        if len(parts) < 2:
-            return {"alive": False, "reason": "invalid_url"}
-
-        owner, name = parts[0], parts[1]
-
-        # Try GitHub API
-        api_url = f"https://api.github.com/repos/{owner}/{name}"
-        headers = ["-H", "Accept: application/vnd.github+json"]
-        if token:
-            headers.extend(["-H", f"Authorization: token {token}"])
-
-        try:
-            result = subprocess.run(
-                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}"] + headers + [api_url],
-                capture_output=True, text=True, timeout=10
-            )
-            status = result.stdout.strip()
-
-            if status == "200":
-                return {"alive": True, "reason": "ok"}
-            elif status == "404":
-                return {"alive": False, "reason": "not_found"}
-            elif status == "403":
-                return {"alive": False, "reason": "rate_limited"}
-            else:
-                return {"alive": False, "reason": f"http_{status}"}
-
-        except subprocess.TimeoutExpired:
-            return {"alive": False, "reason": "timeout"}
-        except Exception as e:
-            return {"alive": False, "reason": str(e)}
-
-    def validate_all(self, limit=None):
-        """Validate all tools and update status."""
-        token = self._get_token()
-        print(f"Token: {'TAK' if token else 'NIE'}")
-
-        # Get unique GitHub URLs
-        github_urls = {}
-        for tool in self.tools:
-            url = tool.get("url", "").rstrip("/").lower()
-            if "github.com/" in url and url not in github_urls:
-                github_urls[url] = tool
-
-        print(f"Unikalne URL-e GitHub: {len(github_urls)}")
-
-        if limit:
-            github_urls = dict(list(github_urls.items())[:limit])
-
-        results = {"alive": 0, "dead": 0, "rate_limited": 0, "error": 0}
-        checked = 0
-
-        for url, tool in github_urls.items():
-            info = self._check_github(url, token)
-
-            # Update tool
-            tool["alive"] = info["alive"]
-            tool["alive_reason"] = info["reason"]
-
-            if info["alive"]:
-                results["alive"] += 1
-            elif info["reason"] == "rate_limited":
-                results["rate_limited"] += 1
-                print(f"  Rate limit! Czekam 60s...")
-                time.sleep(60)
-            elif info["reason"] in ["not_found", "not_github", "invalid_url"]:
-                results["dead"] += 1
-            else:
-                results["error"] += 1
-
-            checked += 1
-            if checked % 50 == 0:
-                print(f"  Sprawdzono: {checked}/{len(github_urls)} (alive={results['alive']}, dead={results['dead']})")
-                self._save()  # Save progress
-
-            time.sleep(0.1)  # Rate limit protection
-
-        self._save()
-
-        # Save report
-        report = {
-            "total_checked": checked,
-            "github_urls": len(github_urls),
-            "results": results,
-        }
-        self.report_file.write_text(json.dumps(report, indent=2))
-
+        report = self._report(found, checked_non_github, time.perf_counter() - started)
+        self.report_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
         return report
 
-    def validate_sample(self, n=100):
-        """Validate a random sample of tools."""
-        import random
-        sample = random.sample(self.tools, min(n, len(self.tools)))
+    def _validate_non_github(self, limit=None, verbose=True):
+        rows = self.conn.execute(
+            "SELECT url_norm, url FROM tools WHERE url_norm NOT LIKE 'github.com/%'"
+            " AND alive IS NULL ORDER BY score DESC"
+        ).fetchall()
+        if limit:
+            rows = rows[: int(limit)]
+        checked = 0
+        for row in rows:
+            ok, reason = self._check_url(row["url"])
+            self.conn.execute(
+                "UPDATE tools SET alive=?, alive_reason=? WHERE url_norm=?",
+                (1 if ok else 0, reason, row["url_norm"]),
+            )
+            checked += 1
+            if verbose and checked % 100 == 0:
+                print(f"  sprawdzono {checked}/{len(rows)}", flush=True)
+            time.sleep(0.05)
+        self.conn.commit()
+        return checked
 
-        token = self._get_token()
-        results = {"alive": 0, "dead": 0, "error": 0}
+    @staticmethod
+    def _check_url(url):
+        host = langmap.host_of(url)
+        if not host:
+            return False, "bad_url"
+        try:
+            result = subprocess.run(
+                ["curl", "-sS", "-o", "/dev/null", "-L", "--max-time", "15",
+                 "-w", "%{http_code}", url],
+                capture_output=True, text=True, timeout=20,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False, "error"
+        status = (result.stdout or "").strip()[-3:]
+        if status == "200":
+            return True, "ok"
+        if status in {"301", "302", "307", "308"}:
+            return True, "redirect"
+        if status == "429":
+            return None, "rate_limited"
+        return False, f"http_{status}"
 
-        for tool in sample:
-            url = tool.get("url", "").rstrip("/")
-            if "github.com/" not in url:
-                continue
-
-            info = self._check_github(url, token)
-            tool["alive"] = info["alive"]
-            tool["alive_reason"] = info["reason"]
-
-            if info["alive"]:
-                results["alive"] += 1
-            else:
-                results["dead"] += 1
-
-            time.sleep(0.1)
-
-        self._save()
-        return results
-
-    def get_stats(self):
-        """Get validation stats."""
-        alive = sum(1 for t in self.tools if t.get("alive") is True)
-        dead = sum(1 for t in self.tools if t.get("alive") is False)
-        unknown = sum(1 for t in self.tools if t.get("alive") is None)
-
+    def _report(self, github_found, non_github_checked, seconds):
+        row = self.conn.execute(
+            "SELECT COUNT(*) total,"
+            " SUM(CASE WHEN alive = 1 THEN 1 ELSE 0 END) alive,"
+            " SUM(CASE WHEN alive = 0 THEN 1 ELSE 0 END) dead,"
+            " SUM(CASE WHEN alive IS NULL THEN 1 ELSE 0 END) unknown"
+            " FROM tools"
+        ).fetchone()
         return {
-            "total": len(self.tools),
-            "alive": alive,
-            "dead": dead,
-            "unknown": unknown,
+            "total": row["total"] or 0,
+            "alive": row["alive"] or 0,
+            "dead": row["dead"] or 0,
+            "unknown": row["unknown"] or 0,
+            "results": {
+                "alive": row["alive"] or 0,
+                "dead": row["dead"] or 0,
+                "rate_limited": 0,
+                "error": non_github_checked,
+            },
+            "total_checked": (github_found or 0) + (non_github_checked or 0),
+            "github_found": github_found or 0,
+            "non_github_checked": non_github_checked or 0,
+            "seconds": round(seconds, 1),
         }
 
-    def get_alive_tools(self, min_stars=0):
-        """Get only alive tools."""
+    def validate_sample(self, n=100):
+        return self.validate_all(limit=int(n))
+
+    def get_stats(self):
+        report = self._report(0, 0, 0.0)
+        return {
+            "total": report["total"],
+            "alive": report["alive"],
+            "dead": report["dead"],
+            "unknown": report["unknown"],
+        }
+
+    def get_alive_tools(self, min_stars=0, limit=200):
         return [
-            t for t in self.tools
-            if t.get("alive") is True
-            and t.get("source_stars", 0) >= min_stars
+            dict(r)
+            for r in self.conn.execute(
+                "SELECT name, url, lang, source_repo, tool_stars, score FROM tools"
+                " WHERE alive = 1 AND COALESCE(tool_stars, source_stars) >= ?"
+                " ORDER BY score DESC LIMIT ?",
+                (min_stars, limit),
+            )
         ]
 
-    def get_dead_tools(self):
-        """Get dead tools."""
-        return [t for t in self.tools if t.get("alive") is False]
+    def get_dead_tools(self, limit=200):
+        return [
+            dict(r)
+            for r in self.conn.execute(
+                "SELECT name, url, source_repo, alive_reason FROM tools"
+                " WHERE alive = 0 ORDER BY lists_count DESC LIMIT ?",
+                (limit,),
+            )
+        ]
