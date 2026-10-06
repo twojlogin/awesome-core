@@ -619,8 +619,6 @@ class TestDatabase(unittest.TestCase):
     def test_status_separates_repos_from_nongithub_links(self):
         """status nie może mówić 'brak gwiazdek' o artykułach — to kłamstwo,
         które wygląda jak błąd i psuje decyzję co odświeżać."""
-        from core import status as status_mod
-
         report = status_mod.collect(self.data_dir)
         self.assertTrue(report["ready"])
         self.assertIn("repos_to_fetch", report)
@@ -634,8 +632,6 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(enrich_step["command"], "./awesome enrich")
 
     def test_status_reports_gaps(self):
-        from core import status as status_mod
-
         state = status_mod.collect(self.data_dir)
         self.assertTrue(state["ready"])
         self.assertEqual(state["tools"], self.summary["tools"])
