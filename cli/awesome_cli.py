@@ -27,6 +27,7 @@ Listy i fasetki:
   awesome langs | platforms | domains — co jest w bazie
   awesome lists                       — najlepsze listy wg jakości
 awesome clones                      — kopie i forki list (wpływ na ranking)
+awesome untrusted                   — skan opisów pod kątem prompt injection
 awesome mcp                         — serwer MCP (stdio) dla lokalnych agentów
 awesome mcp --demo                  — pokaż wymianę JSON-RPC
   awesome list <owner/repo>           — narzędzia z listy
@@ -84,12 +85,16 @@ def print_tools(results, limit=20, show_url=True):
     if not results:
         print("Brak wyników.")
         return
-    for i, tool in enumerate(results[:limit], 1):
+    shown_rows = results[:limit]
+    for i, tool in enumerate(shown_rows, 1):
         lang = tool.get("lang") or "?"
         lists = tool.get("lists_count", 0)
         stars = tool.get("tool_stars") or tool.get("source_stars") or 0
         badge = f"{tool.get('score', 0):.0f} pkt"
-        print(f"  {i:2d}. {tool.get('name', '?')}")
+        label = tool.get("display_name") or tool.get("name", "?")
+        taken = tool.get("name_taken_by")
+        suffix = f"  ← {taken} narzędzia o tej nazwie" if taken else ""
+        print(f"  {i:2d}. {label}{suffix}")
         print(
             f"      {lang:<12} list: {lists:<3} gwiazdki: {stars:<7} "
             f"jakość listy: {badge}"
@@ -799,6 +804,30 @@ def cmd_validate(limit=None, non_github=False):
     print(f"  Czas: {report['seconds']}s")
 
 
+def cmd_untrusted():
+    """Skan bazy pod kątem tekstu wyglądającego na instrukcje (prompt injection).
+
+    Opisy w bazie napisali obcy ludzie. Dziś nie ma tam ani jednego
+    "ignoruj poprzednie instrukcje", ale warto to sprawdzać samemu, zamiast
+    ufać obietnicy. Ten sam filtr siedzi w serwerze MCP.
+    """
+    from core import store, untrusted
+
+    conn = store.connect(read_only=True)
+    tools, hits = untrusted.scan(conn)
+    conn.close()
+    print(f"\nSkan {tools:,} narzędzi pod kątem prompt injection")
+    if not hits:
+        print("  Czysto: nic nie wygląda na polecenia dla modelu.")
+        return
+    print(f"  Podejrzane: {len(hits)} (większość to fałszywe alarmy, np. "
+          f'"Home Assistant" trafia w wzorzec "assistant:")')
+    for hit in hits[:25]:
+        print(f"  - {hit['name'][:38]:38} {hit['field']:11} "
+              f"{', '.join(hit['findings'])}")
+        print(f"      {hit['url']}")
+
+
 def cmd_export(fmt, out=None, limit=None):
     from core import store
 
@@ -897,11 +926,22 @@ def main():
         else:
             results = tools_db.search(query, limit=limit, **filters)
         filters["limit"] = limit
+        # Cztery narzędzia o nazwie "Sherlock" to cztery różne projekty —
+        # bez właściciela laik widzi same duplikaty.
+        tools_db.disambiguate(results)
         print(f"\nSzukaj: {query}")
         shown = {k: v for k, v in filters.items() if v not in (None, 0, False, "")}
         if shown:
             print("Filtry: " + " ".join(f"{k}={v}" for k, v in shown.items()))
         print(f"Znaleziono: {len(results)}\n")
+        hints = tools_db.narrowing_hints(query, filters, len(results))
+        if hints:
+            key, value, count = hints[0]
+            print(f"Uwaga: {len(hints)} filtry łączy AND i zostawiły "
+                  f"{len(results)} wynik(ów).")
+            for k, v, c in hints:
+                print(f"    bez {k}={v}  →  {c} wyników")
+            print()
         print_tools(results, filters["limit"])
     elif cmd in {"langs", "platforms", "domains"}:
         tools_db, _, _ = dbs()
@@ -993,6 +1033,8 @@ def main():
         cmd_enrich(_flag_int(args, "--limit"))
     elif cmd == "backfill":
         cmd_backfill(_flag_int(args, "--limit"), force="--force" in args)
+    elif cmd in {"untrusted", "trust"}:
+        cmd_untrusted()
     elif cmd == "validate":
         cmd_validate(
             int(args[args.index("--limit") + 1]) if "--limit" in args else None,

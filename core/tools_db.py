@@ -8,7 +8,7 @@ web i AI Bibliotekarza), plus fasetki: język, platforma, domena, consensus.
 import re
 import sqlite3
 import threading
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from core import aliases, clones, langmap, scoring, store
@@ -39,6 +39,17 @@ TOOL_COLUMNS = (
     " owners_count, clones_skipped, lists_stars, score, underrated, hidden_gem,"
     " first_seen"
 )
+
+
+def owner_of(url_norm):
+    """github.com/owner/name → owner; dla innych hostów pierwszy segment."""
+    parts = [p for p in str(url_norm or "").split("/") if p]
+    if not parts:
+        return ""
+    host = parts[0].lower()
+    if host.endswith("github.com") or host.endswith("gitlab.com"):
+        return parts[1] if len(parts) > 2 else ""
+    return ""
 
 
 def row_to_tool(row):
@@ -238,6 +249,60 @@ class ToolsDB:
             )
         ]
 
+    def disambiguate(self, rows):
+        """O znacznie powtarzających się nazwach dorzuc właściciela repo.
+
+        "Sherlock" to w bazie cztery różne narzędzia: OSINT, skrypt do
+        privilege escalation w PowerShellu, launcher Wayland i wrapper na
+        apify.com. Cztery pozycje o tej samej nazwie wyglądają jak błąd,
+        a laik nie ma jak zgadnąć, o które mu chodzi. Właściciel rozróżnia
+        je w jednym spojrzeniu: "Sherlock (rasta-mouse)".
+        """
+        counts = Counter(row.get("name", "") for row in rows)
+        # Duplikaty liczę w całej bazie, nie tylko w wynikach: najbardziej
+        # myliący jest przypadek jednego wyniku "Sherlock", którego nie ma
+        # z czym porównać na ekranie, a w bazie siedzą jeszcze trzy.
+        names = sorted({row.get("name", "") for row in rows if row.get("name")})
+        if names:
+            marks = ",".join("?" * len(names))
+            for row in self.conn.execute(
+                f"SELECT name FROM tools WHERE name IN ({marks})"
+                " GROUP BY name HAVING COUNT(*) > 1", names
+            ):
+                counts[row["name"]] = max(counts[row["name"]], 2)
+        for row in rows:
+            name = row.get("name", "")
+            row["name_taken_by"] = counts[name] if counts[name] > 1 else 0
+            row["display_name"] = name
+            if counts[name] > 1:
+                owner = owner_of(row.get("url_norm") or row.get("url") or "")
+                if owner:
+                    row["display_name"] = f"{name} ({owner})"
+        return rows
+
+    def narrowing_hints(self, query, filters, got, min_results=3):
+        """Który filtr odsiał prawie wszystko? Mierzymy, nie zgadujemy.
+
+        Filtry łączy AND, więc trzy z nich potrafią wyciszyć wszystko do
+        jednego przypadkowego trafienia. Zamiast pokazać taki wynik bez
+        słowa wyjaśnienia, mówimy który filtr odpuścić i ile wtedy wychodzi.
+        """
+        drop = {"limit", "sort"}
+        active = {
+            k: v for k, v in filters.items()
+            if k not in drop and v not in (None, 0, False, "")
+        }
+        if len(active) < 2 or got >= min_results:
+            return []
+        out = []
+        for key in active:
+            probe = dict(active)
+            probe.pop(key)
+            count = len(self.search(query, limit=min_results * 5, **probe))
+            out.append((key, active[key], count))
+        out.sort(key=lambda row: -row[2])
+        return out
+
     def search(self, query, limit=50, min_stars=0, alive_only=False, lang=None,
                platform=None, domain=None, source=None, sort="score"):
         terms = [t for t in TOKEN_RE.findall(query or "") if len(t) > 1]
@@ -280,7 +345,16 @@ class ToolsDB:
                     for e in expanded
                 )
                 if exact:
-                    score = max(score, 80)
+                    # Alias to podpowiedź, nie twardy dowód: nazwa narzędzia
+                    # bywa aliasem zapytania (aliasy "osint" wymieniają
+                    # sherlock/maigret/spiderfoot). Bezwarunkowa podłoga 80
+                    # działa dobrze, bo "osint" ma faktycznie prowadzić do
+                    # Maigret i SpiderFoot. Nie wolno jej jednak zrównować z
+                    # dopasowaniem dosłownym: te 4 punkty zostają tylko wtedy,
+                    # gdy narzędzie pasuje do zapytania też bez aliasu —
+                    # inaczej wąski filtr potrafi wypchnąć na pierwsze miejsce
+                    # cokolwiek, co akurat dzieli nazwę z znaną gwiazdą.
+                    score = max(score, 80 if score > 0 else 45)
                 elif score > 0 and any(e.lower() in name for e in expanded):
                     score += 25
             if score <= 0:

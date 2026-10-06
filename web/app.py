@@ -150,10 +150,13 @@ def search():
     }
     min_consensus = _int_arg("min_consensus", 0)
     results = []
+    hints = []
     if query:
         results = tools.search(query, limit=200, **filters)
         if min_consensus:
             results = [t for t in results if t["lists_count"] >= min_consensus]
+        tools.disambiguate(results)
+        hints = tools.narrowing_hints(query, filters, len(results))
     return render_template(
         "search.html",
         results=results[:100],
@@ -161,6 +164,7 @@ def search():
         query=query,
         filters=filters,
         min_consensus=min_consensus,
+        hints=hints,
         langs=tools.langs(min_count=5, limit=40),
         platforms=tools.platforms(min_count=5, limit=30),
         domains=tools.domains(min_count=10, limit=25),

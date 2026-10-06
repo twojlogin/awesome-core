@@ -6,15 +6,27 @@
 i pozwala szybko znaleźć narzędzie — po nazwie, języku, systemie albo temacie —
 całkowicie bez internetu.**
 
-Na przykład chcesz „coś do OSINT na Windowsa w PowerShellu". Wpisujesz:
+Na przykład chcesz „coś do OSINT-a działające pod Windows". Wpisujesz:
 
 ```bash
-./awesome search osint --os windows --lang PowerShell
+./awesome search osint --os windows
 ```
 
-i dostajesz listę narzędzi z kilku różnych awesome list naraz, posortowaną tak,
-że na górze są te, które **niezależni kuratorzy wskazali w wielu listach**
+i dostajesz narzędzia z kilku różnych awesome list naraz, posortowane tak, że
+na górze są te, które **niezależni kuratorzy wskazali w wielu listach**
 (a nie tylko te z jednej głośnej listy).
+
+> **Filtry łączy AND, więc kumulują się szybko.** `--os windows --lang PowerShell`
+> zostawia z „osint" **jedno** narzędzie — i to nie to, czego szukałeś, tylko
+> skrypt PowerShell, który akurat też nazywa się „Sherlock". Program wie, że
+> filtr jest za wąski, i mówi wprost, który odpuścić:
+>
+> ```
+> Uwaga: 2 filtry łączy AND i zostawiły 1 wynik(ów).
+>     bez lang=PowerShell  →  8 wyników
+> ```
+>
+> Zasada: dodawaj filtr tylko wtedy, gdy wyników jest więcej niż kilka.
 
 ---
 
@@ -130,8 +142,14 @@ lista i Markdown pod linkiem *Moja lista* w menu. W TUI klawisz `k`.
 ```
 
 `./awesome status` po odświeżeniu podpowiada dokładną komendę, np.
-`./awesome enrich --limit 20000`. To samo w przeglądarce: strona `/refresh`
+`./awesome enrich`. To samo w przeglądarce: strona `/refresh`
 z czterema przyciskami. Żadnych cronów, daemonów ani procesów w tle.
+
+**Ważne przy liczbach:** status nie mówi „X narzędzi bez gwiazdek", tylko ile
+**repozytoriów zostało do odpytania**. Różnica jest ogromna, bo kilka narzędzi
+często wskazuje na to samo repo, a linki poza GitHubem (artykuły, filmy,
+dokumentacja) **nie mają i nigdy nie będą miały gwiazdek** — nie licz ich
+jako brakującej pracy.
 
 ---
 
@@ -175,6 +193,51 @@ Co warto wiedzieć:
   więc agent może je cytować i porównywać.
 - Protokół jest czystym JSON-RPC 2.0 po stdin/stdout; logi idą na stderr,
   żeby nie psuły kanału.
+
+---
+
+## Skąd to wszystko pochodzi — i czy mi szkodzi
+
+Pytanie, które powinien zadać każdy: *co jeśli ktoś wrzuci złośliwą listę?*
+
+**Skąd listy:** `download.sh` pyta publiczne API GitHuba o repozytoria
+oznaczone `topic:awesome-list` (plus `topic:awesome` i `topic:curated-list`
+w trybie `--wide`), posortowane po gwiazdkach. Nic więcej — żadnych
+„polecanych" repozytoriów, żadnych losowych adresów.
+
+**Nic z obcego repozytorium nigdy nie jest wykonywane:**
+
+- README jest **danymi**. Parser wyciąga z niego linki regexem i tyle.
+  Nie ma miejsca, w którym treść README trafiłaby do `eval`, `exec`,
+  `shell=True` czy któregokolwiek wywołania systemowego.
+- `awesome install` robi dokładnie `git clone --depth 1`. Git nie uruchamia
+  kodu z zdalnego repozytorium (żadnych hooków).
+- Przeglądarka escapuje HTML, a renderer Markdown w `core/md.py` też —
+  `<script>` w opisie wychodzi jako tekst, nie jako tag.
+
+**Jedyny realny wektor: opisy trafiające do kontekstu modelu.** Serwer MCP
+zamienia opisy narzędzi w tekst, który czyta agent. Opis napisał ktoś
+nieznany, w repozytorium niesprawdzonym. Dlatego:
+
+- Opisy przechodzą przez `core/untrusted.py`, które wycina instrukcje
+  wyglądające na polecenia, znaczniki ról (`system:`, `assistant:`), tagi
+  HTML, `curl … | sh` i `rm -rf` — zostawiając przy tym znacznik
+  `[odfiltrowano: …]`, żeby dało się zauważyć.
+- `initialize` w MCP mówi agentowi wprost: to treść trzecia, nie rozkazy.
+- Sprawdź sam, kiedy chcesz:
+
+```bash
+./awesome untrusted
+```
+
+Stan na dziś: **0 wykrytych ataków** w 186 861 narzędziach (3 trafienia to
+fałszywe alarmy — `rimraf` ma w opisie „like rm -rf", a `safety-net` to
+narzędzie, które `rm -rf` blokuje). Ciekawa ironia: katalog zawiera trzy
+narzędzia do obrony przed dokładnie tym problemem (`nvidia/skillspector`,
+`vaporif/parry-guard`, `safety-net`).
+
+Czego **nie** obiecuję: skaner łapie znane wzorce, nie jest dowodem
+niezawodności. Dlatego traktuj opisy jako dane, a nie polecenia.
 
 ---
 

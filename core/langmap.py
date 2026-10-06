@@ -416,11 +416,31 @@ def matching_groups(haystack, groups):
     return hits
 
 
+def is_code_host(url=""):
+    """Czy adres to repozytorium albo rejestr pakietów (a nie strona www)."""
+    host = str(url or "").lower().split("/")[0]
+    return host in GIT_HOSTS or is_package_host(host)
+
+
 def infer_platform(url="", name="", description="", section="", subsection="", topics=""):
-    """Platformy (Windows/WSL/Linux/macOS/Docker/...) jako lista ';'."""
-    haystack = " ".join(
-        str(x) for x in (url, name, description, section, subsection, topics)
-    ).lower()
+    """Platformy (Windows/WSL/Linux/macOS/Docker/...) jako lista ';'.
+
+    Tytuł strony to słaby sygnał. "Top 10 Interview Questions for Windows"
+    (guru99.com), "Open Windows" (film na IMDb) i link do YouTube dostawały
+    windows, bo nazwa zawierała to słowo — a żadne z nich nie jest
+    narzędziem pod Windows i wszystkie zaśmiecały filtr --os windows.
+    Adres z kodem (GitHub, PyPI, npm) zostawiam bez zmian: tam nazwa
+    repozytorium jest wiarygodna. Poza nim wymagam potwierdzenia
+    w opisie, sekcji lub tematach — a sekcje są pisane przez kuratorów.
+    """
+    if is_code_host(url):
+        haystack = " ".join(
+            str(x) for x in (url, name, description, section, subsection, topics)
+        ).lower()
+    else:
+        haystack = " ".join(
+            str(x) for x in (description, section, subsection, topics)
+        ).lower()
     return ";".join(matching_groups(haystack, PLATFORM_KEYWORDS))
 
 

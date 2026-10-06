@@ -31,6 +31,15 @@
         <input type="text" name="min_consensus" value="{{ min_consensus or '' }}" placeholder="min. list" size="4">
         <button type="submit">Filtruj</button>
     </form>
+    {% if hints %}
+    <div class="panel warn" style="margin:1rem 0;">
+        <b>Filtry są zbyt wąskie.</b> Łączą się przez AND, więc razem zostawiły
+        tylko {{ total }} wynik(ów). Odpuść jeden:
+        {% for key, value, count in hints %}
+        <a class="tag" href="/search?q={{ query|urlencode }}{% if key == 'lang' %}&lang={{ value|urlencode }}{% elif key == 'platform' %}&os={{ value|urlencode }}{% elif key == 'domain' %}&domain={{ value|urlencode }}{% endif %}">bez {{ key }}={{ value }} → {{ count }} wyników</a>
+        {% endfor %}
+    </div>
+    {% endif %}
     {% for tool in results %}{% include "partials/tool_row.html" %}{% endfor %}
     {% if query and not results %}<p class="muted">Brak wyników. Spróbuj szerszego zapytania albo wyczyść filtry.</p>{% endif %}
 </div>

@@ -1,6 +1,7 @@
 <div class="tool">
     <div class="row">
-        <a href="/tool/{{ tool.url_norm }}" class="name">{{ tool.name }}</a>
+        <a href="/tool/{{ tool.url_norm }}" class="name">{{ tool.display_name or tool.name }}</a>
+        {% if tool.name_taken_by %}<span class="dim small" title="w bazie jest kilka różnych narzędzi o tej nazwie">×{{ tool.name_taken_by }}</span>{% endif %}
         {% if tool.tool_stars %}<span class="score">★ {{ "{:,}".format(tool.tool_stars) }}</span>
         {% elif tool.source_stars %}<span class="score">★ {{ "{:,}".format(tool.source_stars) }} <span class="dim">(lista)</span></span>{% endif %}
         {% if tool.lists_count > 1 %}<span class="badge good" title="w ilu niezależnych listach">{{ tool.lists_count }}×</span>{% endif %}
