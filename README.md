@@ -123,6 +123,16 @@ wklej gotowy Markdown:
 W web UI jest to samo: przycisk **☆ Do mojej listy** na stronie narzędzia,
 lista i Markdown pod linkiem *Moja lista* w menu. W TUI klawisz `k`.
 
+Osobno istnieje `watch` — lista **repozytoriów list**, które chcesz śledzić
+(nowe narzędzia w ulubionej liście), a nie lista narzędzi:
+
+```bash
+./awesome watch add sindresorhus/awesome
+./awesome watch check          # co doszło od ostatniego sprawdzenia
+```
+
+Obie listy są lokalne i żadna nie odpytuje się sama w tle.
+
 ### Trzy interfejsy, ten sam katalog
 
 ```bash
@@ -286,6 +296,14 @@ Z tego wynika reszta decyzji:
 | **fasetka** | klikalny filtr boczny, np. „język: Python” |
 
 ---
+
+## Licencja
+
+MIT — `LICENSE` w katalogu. Kod jest mój, ale **nazwy, linki i krótkie opisy
+narzędzi pochodzą z cudzych awesome list** i należą do ich autorów. W bazie
+są tylko adresy i nazwy repozytoriów (fakty, nie czyjeś treści), a same
+README nie są dołączane do repo — pobierasz je na swój dysk przez
+`./download.sh`.
 
 ## Znane ograniczenia (uczciwie)
 
