@@ -493,13 +493,17 @@ def _now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def export_json(conn, out_path, limit=None):
-    sql = "SELECT * FROM tools"
-    params = ()
+def _export_rows(conn, limit=None):
+    """LIMIT musi iść po ORDER BY — inaczej SQLite mówi "near ORDER"."""
+    sql = "SELECT * FROM tools ORDER BY score DESC"
     if limit:
         sql += " LIMIT ?"
-        params = (int(limit),)
-    rows = conn.execute(sql + " ORDER BY score DESC", params).fetchall()
+        return conn.execute(sql, (int(limit),)).fetchall()
+    return conn.execute(sql).fetchall()
+
+
+def export_json(conn, out_path, limit=None):
+    rows = _export_rows(conn, limit)
     data = [dict(r) for r in rows]
     Path(out_path).write_text(
         json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -508,12 +512,7 @@ def export_json(conn, out_path, limit=None):
 
 
 def export_csv(conn, out_path, limit=None):
-    sql = "SELECT * FROM tools"
-    params = ()
-    if limit:
-        sql += " LIMIT ?"
-        params = (int(limit),)
-    rows = conn.execute(sql + " ORDER BY score DESC", params).fetchall()
+    rows = _export_rows(conn, limit)
     fields = [d[0] for d in conn.execute("SELECT * FROM tools LIMIT 0").description]
     with open(out_path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=fields)

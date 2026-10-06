@@ -103,9 +103,12 @@ class Validator:
             "alive": row["alive"] or 0,
             "dead": row["dead"] or 0,
             "unknown": row["unknown"] or 0,
+            # Wynik tego przebiegu, nie całej bazy. Wcześniej "results" podawało
+            # globalne sumy, więc "Sprawdzono: 3" stało obok "Żywe: 100360" i
+            # wyglądało, jakbym sprawdził 100 tysięcy linków.
             "results": {
-                "alive": row["alive"] or 0,
-                "dead": row["dead"] or 0,
+                "alive": github_found or 0,
+                "dead": 0,
                 "rate_limited": 0,
                 "error": non_github_checked,
             },

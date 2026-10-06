@@ -370,6 +370,78 @@ class TestClones(unittest.TestCase):
         self.assertEqual(stats["clones"], 2)
 
 
+class TestCliIsForgiving(unittest.TestCase):
+    """Żadna komenda nie może wywalić się tracebackiem na głupim wejściu.
+
+    Zgłoszone przez użytkownika: "awesome lists --limit 5" wywracało się
+    ValueError, a "awesome hidden_gem" wypisywało pomoc zamiast wyniku.
+    Pierwsze wrażenie po takim błędzie: "ten program jest zepsuty".
+    """
+
+    def test_limit_parsing_never_raises(self):
+        from cli import awesome_cli
+
+        self.assertEqual(awesome_cli._limit_from(["--limit", "5"], 20), 5)
+        self.assertEqual(awesome_cli._limit_from(["7"], 20), 7)
+        self.assertEqual(awesome_cli._limit_from([], 20), 20)
+        self.assertEqual(awesome_cli._limit_from(["--limit", "abc"], 20), 20)
+        self.assertEqual(awesome_cli._limit_from(["--limit"], 20), 20)
+        self.assertEqual(awesome_cli._limit_from(["--limit", "-3"], 20), 1)
+        self.assertEqual(awesome_cli._limit_from(["--os", "windows"], 20), 20)
+
+    def test_flag_never_raises(self):
+        from cli import awesome_cli
+
+        self.assertEqual(awesome_cli._flag(["--lang", "Go"], "--lang"), "Go")
+        self.assertIsNone(awesome_cli._flag(["--lang"], "--lang"))
+        self.assertIsNone(awesome_cli._flag([], "--lang"))
+
+    def test_export_writes_where_asked(self):
+        """Regression: "export json --out" brało "--out" jako ścieżkę i pisało
+        plik o nazwie "--out" (171 MB) w katalogu roboczym. Potem "git add -A"
+        wciągnęło go do repo, a GitHub by takiego pusha odrzucił."""
+        import subprocess
+
+        root = Path(__file__).parent.parent
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "tools.json"
+            done = subprocess.run(
+                [sys.executable, str(root / "cli" / "awesome_cli.py"),
+                 "export", "json", "--out", str(target), "--limit", "5"],
+                capture_output=True, text=True, timeout=300, cwd=tmp,
+            )
+            self.assertIn("Traceback", done.stderr) and self.fail(done.stderr)
+            self.assertTrue(target.exists(), "nie zapisano pod podaną ścieżką")
+            self.assertFalse((Path(tmp) / "--out").exists(),
+                             "powstał plik '--out' zamiast podanej ścieżki")
+
+    def test_export_limit_is_valid_sql(self):
+        """LIMIT przed ORDER BY wywalało się na "near ORDER"."""
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        with tempfile.TemporaryDirectory() as tmp:
+            for fmt, name in (("json", "t.json"), ("csv", "t.csv")):
+                path = Path(tmp) / name
+                count = (store.export_json(conn, path, limit=5) if fmt == "json"
+                         else store.export_csv(conn, path, limit=5))
+                self.assertEqual(count, 5)
+                self.assertTrue(path.exists())
+        conn.close()
+
+    def test_help_and_unknown_command_are_clean(self):
+        import subprocess
+
+        root = Path(__file__).parent.parent
+        for args in (["help"], ["--help"], ["nieistniejająca-komenda"]):
+            done = subprocess.run(
+                [sys.executable, str(root / "cli" / "awesome_cli.py"), *args],
+                capture_output=True, text=True, timeout=60, cwd=root,
+            )
+            self.assertNotIn("Traceback", done.stdout + done.stderr, args)
+            self.assertNotIn("Traceback", done.stderr)
+
+
 class TestNoAIinCore(unittest.TestCase):
     """Rdzeń ma być lokalny i przewidywalny. AI wchodzi jednym adapterem.
 

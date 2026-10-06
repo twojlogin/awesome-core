@@ -28,3 +28,6 @@ Thumbs.db
 
 # logi przebiegów (download/enrich) — robocze, nie do repo
 logs/
+
+# złom po błędzie: "export --out" bez ścieżki pisał plik "--out" (171 MB)
+"--out"

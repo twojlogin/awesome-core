@@ -797,11 +797,14 @@ def cmd_validate(limit=None, non_github=False):
     from core.validator import Validator
 
     report = Validator().validate_all(limit=limit, non_github=non_github)
-    print(f"\nSprawdzono: {report['total_checked']}")
-    print(f"  Żywe: {report['alive']}")
-    print(f"  Martwe: {report['dead']}")
-    print(f"  Niesprawdzone: {report['unknown']}")
-    print(f"  Czas: {report['seconds']}s")
+    print(f"\nSprawdzono w tym przebiegu: {report['total_checked']}")
+    print(f"  znalezionych metadanych: {report['github_found']}"
+          + (f", sprawdzonych poza GitHubem: {report['non_github_checked']}"
+             if non_github else ""))
+    print(f"Stan całej bazy ({report['total']:,} narzędzi):")
+    print(f"  żywych {report['alive']:,} · martwych {report['dead']:,} · "
+          f"jeszcze nie sprawdzonych {report['unknown']:,}")
+    print(f"  czas: {report['seconds']}s")
 
 
 def cmd_untrusted():
@@ -858,6 +861,32 @@ def cmd_check(curator):
             print(f"  {name}: {result.stdout.strip() or 'brak commitów'}")
         else:
             print(f"  {name}: {info['method']} (bez weryfikacji)")
+
+
+def _flag(args, name):
+    """Wartość flagi albo None — bez awarii na dziwnym wejściu."""
+    if name not in args:
+        return None
+    index = args.index(name)
+    return args[index + 1] if index + 1 < len(args) else None
+
+
+def _limit_from(args, default=20):
+    """--limit N albo pozycyjna liczba. Śmieciowe wejście → default, nie wyjątek.
+
+    Wcześniej "awesome lists --limit 5" kończyło się tracebackiem, a to jest
+    dokładnie ten rodzaj błędu, przez który porzuca się narzędzie.
+    """
+    value = _flag(args, "--limit")
+    if value is None:
+        positional = [a for a in args if not a.startswith("-")]
+        value = positional[0] if positional else None
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        if value is not None:
+            print(f"Nie rozumiem '{value}' jako liczby — używam {default}.")
+        return default
 
 
 def parse_search_args(args):
@@ -948,7 +977,7 @@ def main():
         {"langs": cmd_langs, "platforms": cmd_platforms, "domains": cmd_domains}[cmd](tools_db)
     elif cmd == "lists":
         tools_db, _, _ = dbs()
-        cmd_lists(tools_db, int(args[0]) if args else 20)
+        cmd_lists(tools_db, n=_limit_from(args, 20))
     elif cmd == "list" and args:
         tools_db, _, _ = dbs()
         cmd_list(tools_db, args[0])
@@ -961,10 +990,14 @@ def main():
         platform = args[args.index("--os") + 1] if "--os" in args else None
         limit = int(args[args.index("--limit") + 1]) if "--limit" in args else 20
         cmd_underrated(tools_db, limit=limit, lang=lang, platform=platform)
-    elif cmd == "gems":
+    elif cmd in {"gems", "hidden_gem", "hidden-gem", "perelki", "perełki"}:
         tools_db, _, _ = dbs()
-        lang = args[args.index("--lang") + 1] if "--lang" in args else None
-        cmd_gems(tools_db, limit=20, lang=lang)
+        cmd_gems(tools_db, limit=_limit_from(args, 20), lang=_flag(args, "--lang"))
+    elif cmd in {"consensus", "top", "zgoda"}:
+        tools_db, _, _ = dbs()
+        print("\nNajwiększa zgoda kuratorów (niezależne listy):")
+        print_tools(tools_db.top_consensus(limit=_limit_from(args, 20)),
+                    _limit_from(args, 20), show_url=False)
     elif cmd == "info" and args:
         tools_db, repo_db, curator = dbs()
         cmd_info(tools_db, repo_db, curator, args[0])
@@ -1041,7 +1074,13 @@ def main():
             non_github="--non-github" in args,
         )
     elif cmd == "export" and args:
-        cmd_export(args[0], args[1] if len(args) > 1 else None)
+        # Nie: cmd_export(args[0], args[1] ...) — brało "--out" jako ścieżkę
+        # i pisało plik o nazwie "--out" (171 MB) zamiast podanego miejsca.
+        fmt = args[0]
+        rest = args[1:]
+        if rest and rest[0] in {"json", "csv"}:
+            fmt, rest = rest[0], rest[1:]
+        cmd_export(fmt, out=_flag(rest, "--out"), limit=_limit_from(rest, None))
     elif cmd == "check":
         _, _, curator = dbs()
         cmd_check(curator)
