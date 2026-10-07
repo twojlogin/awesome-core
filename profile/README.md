@@ -7,8 +7,20 @@ telemetrycznych zależności, bez licencji za dostęp.
 
 Główne projekty:
 
-| Projekt | Co to robi | Status |
-|---|---|---|
+| Projekt | Co to robi |
+|---|---|
+| **[awesome-core](https://github.com/twojlogin/awesome-core)** | Katalog narzędzi z awesome list — **186 861 narzędzi z 829 list**, ranking oparty o zgodę niezależnych kuratorów, nie o gwiazdki list. CLI, TUI, Web, MCP. Czysty stdlib + jedna zależność, 105 testów, offline po pierwszym pobraniu. |
+| **[ROZDANIA](https://github.com/twojlogin/ROZDANIA)** | Agregator giveawayów i darmowych pakietów (archive.org, Epic, IndieGala, GamerPower) z **osobnym krokiem weryfikacji**, który otwiera stronę każdej oferty. 624 paczki, 49 potwierdzonych ofert. Zero zależności zewnętrznych. |
+| **[matrixhunt-ultimate](https://github.com/twojlogin/matrixhunt-ultimate)** | Lokalna aplikacja webowa: scrapery, dashboard, **proxy stron z sanacją HTML**, 30 tras API, token na zmiany stanu. React w vendoringu, żeby działało offline. |
+| **[Case study: audyt pracy AI](https://github.com/twojlogin/awesome-core/blob/main/docs/case-study-audyt-ai.md)** | Co okazało się nieprawdziwe w kodzie i dokumentacji napisanych przez model: 6 kłamstw w dokumentacji, martwa komenda, wyciek ścieżki z katalogu domowego do publicznego repo, ranking mylący się w 2/15 znanych narzędziach — i metoda, która to wykrywa. |
+
+Projekty security (hardening Linuksa w bashu, skrypty PowerShell do Windowsa,
+dashboard reconu w FastAPI, menadżer zestawów narzędzi) są publiczne na
+[technoporada](https://github.com/technoporada) i **przechodzą przegląd, zanim
+trafią tutaj** — 226 przechodzących testów, ale trzeba jeszcze porządki w
+opisach i tematach.
+
+---|---|---|
 | **[awesome-core](https://github.com/twojlogin/awesome-core)** | Katalog narzędzi z awesome list — 186 861 narzędzi z 829 list, ranking oparty o zgodę niezależnych kuratorów. CLI, TUI, Web, MCP. Python stdlib + jedna zależność. | ✅ publiczne |
 | `ArekBox-Installer` | Modularny menadżer zestawów narzędzi na Linuksie — jeden skrypt, bez zależności
 | `security-rocket` | Hardening Linuksa w bashu: SSH, UFW, AppArmor, sysctl, AIDE — z preflightem, backupem i rollbackiem
@@ -85,9 +97,7 @@ GitHub: [twojlogin](https://github.com/twojlogin) ·
 profil: [twojlogin.github.io](https://twojlogin.github.io/)
 
 <!--
-  Kopia profilu GitHub (twojlogin/twojlogin). Trzymam ją tutaj, żeby dało się
-  edytować bez przeglądarki. Aby wrzucić zmiany na profil:
-
-      cp profile/README.md /tmp/profrepo/README.md
-      cd /tmp/profrepo && git add README.md && git commit -m "profil" && git push
+  Kopia profilu GitHub (twojlogin/twojlogin). Po odtworzeniu z API popraw
+  i wrzuć: cp profile/README.md /tmp/profrepo/README.md && cd /tmp/profrepo \
+  && git add README.md && git commit -m "profil" && git push
 -->
