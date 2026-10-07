@@ -513,7 +513,7 @@ def _summary(conn):
     lists = conn.execute("SELECT COUNT(*) FROM repos").fetchone()[0]
     mentions = conn.execute("SELECT COUNT(*) FROM tool_mentions").fetchone()[0]
     langs = conn.execute(
-        "SELECT COUNT(DISTINCT lang) FROM tools"
+        "SELECT COUNT(DISTINCT CASE WHEN lang != '?' THEN lang END)) FROM tools"
     ).fetchone()[0]
     with_meta = conn.execute(
         "SELECT COUNT(*) FROM repos WHERE stars > 0"

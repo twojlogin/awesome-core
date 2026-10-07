@@ -145,7 +145,10 @@ class ToolsDB:
     def stats(self):
         row = self.conn.execute(
             "SELECT COUNT(*) total, COUNT(DISTINCT source_repo) lists,"
-            " COUNT(DISTINCT lang) langs, COUNT(DISTINCT section) sections,"
+            # "?" to brak znanego języka, nie język — liczenie go dawało 82
+            # zamiast 81, a ta liczba idzie na profil.
+            " COUNT(DISTINCT CASE WHEN lang != '?' THEN lang END) langs,"
+            " COUNT(DISTINCT section) sections,"
             " SUM(CASE WHEN description != '' THEN 1 ELSE 0 END) with_desc,"
             " SUM(CASE WHEN alive = 1 THEN 1 ELSE 0 END) alive,"
             " SUM(CASE WHEN alive = 0 THEN 1 ELSE 0 END) dead,"
