@@ -514,18 +514,22 @@ class ToolsDB:
                 name_bonus += 30 * name_weight
             elif low in name:
                 name_bonus += 12 * name_weight
+            # Pola tekstowe to potwierdzenie, nie tożsamość. Były warte tyle
+            # ile dokładne dopasowanie nazwy (12 + 8 + 20 + 18 + 12 + 6 = 76),
+            # więc opis z powtórzonym słowem przebijał nazwę narzędzia. Opis
+            # pisze autor — to najsłabszy z dostępnych sygnałów, nie najmocniejszy.
             if low in desc:
-                score += 12
-            if low in section:
-                score += 8
-            if low == lang:
-                score += 20
-            if low in domain:
-                score += 18
-            if low in platform:
-                score += 12
-            if low in source:
                 score += 6
+            if low in section:
+                score += 4
+            if low == lang:
+                score += 6
+            if low in domain:
+                score += 6
+            if low in platform:
+                score += 6
+            if low in source:
+                score += 3
         score += min(name_bonus, NAME_MATCH_CAP)
         if tool.get("lists_count", 0) > 1:
             score += 3

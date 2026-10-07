@@ -34,8 +34,9 @@ Moduł `core/ai_librarian.py` opisany jako „RAG-lite, LLM tylko rankinguje”:
 
 - importował `ai_providers` — **modułu, którego nie ma w repo** (pochodził
   z innego, prywatnego projektu), więc funkcja nie mogła działać,
-- endpoint `/api/ai/ask` zwracał `503 {"error": "pip3 install --user -e ~/<katalog>/projekty"}`
-  — **bezwzględna ścieżka z katalogu domowego autora w publicznym repo**,
+- endpoint `/api/ai/ask` zwracał `503` z **bezwzględną ścieżką z katalogu
+  domowego autora** (dokładny tekst pomijam, bo sam jest wyciekiem — wyłapał go
+  test `test_no_private_paths_in_shipped_code`),
 - funkcja była w katalogu rdzenia, choć dokumentacja mówiła, że AI wchodzi
   jednym adapterem,
 - komenda `awesome ask` (LLM rekomendujący narzędzia) importowała ten usunięty
