@@ -71,6 +71,11 @@ def row_to_tool(row):
     return tool
 
 
+# 60 = tyle daje dokładne dopasowanie nazwy. Dalej rozstrzyga już jakość
+# narzędzia i zgoda niezależnych kuratorów.
+NAME_MATCH_CAP = 60
+
+
 class ToolsDB:
     """Czytelny widok na tabelę tools. Nie ładuje niczego do pamięci na starcie."""
 
@@ -316,9 +321,12 @@ class ToolsDB:
             min_stars=min_stars, alive_only=alive_only, lang=lang,
             platform=platform, domain=domain, source=source,
         )
-        candidates = []
+        candidates = self._name_candidates(query, filters, params, limit * 2)
         if self.fts:
-            candidates = self._fts_candidates(terms, filters, params, limit * 6, " AND ")
+            seen = {t["url_norm"] for t in candidates}
+            fresh = self._fts_candidates(terms, filters, params, limit * 6, " AND ")
+            fresh = [t for t in fresh if t["url_norm"] not in seen]
+            candidates.extend(fresh)
             seen = {t["url_norm"] for t in candidates}
             for batch, size, order in (
                 ([e for e in expanded if e not in terms], limit * 6, "t.score DESC"),
@@ -393,6 +401,26 @@ class ToolsDB:
             self._fts = False
             return []
 
+    def _name_candidates(self, query, filters, params, limit):
+        """Narzędzia o nazwie dokładnie równej zapytaniu.
+
+        Ranking tekstowy (bm25) patrzy na gęstość dopasowania w opisie, a
+        opis pisze autor. Dla "ghidra" wygrywało repo z "Ghidra" w opisie
+        pięć razy, a narzędzie dosłownie nazwane Ghidra — 80 999 gwiazdek,
+        5 list — w ogóle nie wchodziło do kandydatów i nigdy nie dostało
+        punktów. Nazwa to nie podpowiedź, tylko fakt: jeśli ktoś wpisał nazwę
+        narzędzia, to ono ma być kandydatem, mimo gęstszych opisów cudzych.
+        """
+        sql = f"SELECT {self._tool_select()} FROM tools t WHERE t.name_norm = ?"
+        args = [(query or "").lower().strip()]
+        sql, args = self._append_filters(sql, args, filters, params)
+        sql += " ORDER BY t.score DESC LIMIT ?"
+        args.append(limit)
+        try:
+            return [row_to_tool(r) for r in self.conn.execute(sql, args)]
+        except sqlite3.OperationalError:
+            return []
+
     def _like_candidates(self, terms, filters, params, limit):
         where = " OR ".join(
             "(t.name LIKE ? OR t.description LIKE ? OR t.section LIKE ?)" for _ in terms
@@ -464,16 +492,28 @@ class ToolsDB:
         score = 0.0
         # Długie zdania w „nazwie" to zwykle artykuły i checklisty, nie narzędzia
         name_weight = 1.0 if len(name.split()) <= 4 else 0.35
-        if q and q == name:
-            score += 120 * name_weight
+        # Premia za nazwę rozstrzyga tylko przy podobnej jakości dwóch narzędzi.
+        # Bez górnej granicy przebijała ranking: strona o Metasploicie z 1 listą
+        # i 0 gwiazdek brała 192 pkt (dokładne trafienie liczone było dwa razy)
+        # i biła Metasploit Framework (5 list, score 79), a "ghidra" trafiała w
+        # czyjeś skrypty zamiast w Ghidrę od NSA. Zmierzone na 15 znanych
+        # narzędziach, nie zgadnięte.
+        name_bonus = 0.0
+        if q and q == name and len(terms) > 1:
+            name_bonus += 120 * name_weight
         elif q and q in name:
-            score += 45 * name_weight
+            name_bonus += 45 * name_weight
         for term in terms:
             low = term.lower()
+            # Hierarchia monotoniczna: dokładne > początek słowa > w środku.
+            # Wcześniej było odwrotnie (dokładne 30, początek 34), więc przy
+            # zapytaniu "ghidra" wygrywało repo czyichś skryptów zamiast Ghidry.
             if low == name:
-                score += (60 if len(name) > 8 else 30) * name_weight
+                name_bonus += 60 * name_weight
+            elif name.startswith(low):
+                name_bonus += 30 * name_weight
             elif low in name:
-                score += 30 * name_weight
+                name_bonus += 12 * name_weight
             if low in desc:
                 score += 12
             if low in section:
@@ -486,6 +526,7 @@ class ToolsDB:
                 score += 12
             if low in source:
                 score += 6
+        score += min(name_bonus, NAME_MATCH_CAP)
         if tool.get("lists_count", 0) > 1:
             score += 3
         return score

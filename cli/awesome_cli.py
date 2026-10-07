@@ -30,6 +30,7 @@ Listy i fasetki:
   awesome clones                      — kopie i forki list (wpływ na ranking)
   awesome untrusted                   — skan opisów pod kątem prompt injection
 awesome audit                       — czy katalog nie jest zatruty fałszywymi listami
+awesome selfcheck                  — czy wyszukiwanie znajduje 15 znanych narzędzi
 awesome audit owner/repo            — audyt jednego repozytorium
   awesome mcp                         — serwer MCP (stdio) dla lokalnych agentów
   awesome mcp --demo                  — pokaż wymianę JSON-RPC
@@ -933,6 +934,32 @@ def cmd_catalog_audit(args):
     conn.close()
 
 
+def cmd_selfcheck(tools_db):
+    """Czy katalog znajduje znane narzędzie po nazwie. Prawda z zewnątrz.
+
+    To nie jest test jednostkowy: lista 15 narzędzi i ich właścicieli
+    pochodzi ze świata, nie z moich założeń o własnym kodzie. Dlatego wynik
+    tu jest zewnętrzny dla kodu, który ocenia.
+    """
+    from core import selfcheck
+
+    first, in_top, misses = selfcheck.run(tools_db)
+    total = len(selfcheck.KNOWN_TOOLS)
+    print(f"\nSprawdzam {total} znanych narzędzi (nazwa → repozytorium):")
+    print(f"  właściwe repo na pozycji #1: {first}/{total}")
+    print(f"  właściwe repo w top 3:        {in_top}/{total}")
+    if misses:
+        print("\n  Nie na #1:")
+        for miss in misses:
+            where = "jest w top 3" if miss["in_top"] else "poza top 3"
+            print(f"    {miss['query']:12} → {miss['got'][:44]:44} ({where})")
+        print("\n  Przyczyna jest znana i nie jest przypadkowa: ranking czyta to, co")
+        print("  autor napisał — nazwę, opis, gwiazdki, tematy. Repozytorium")
+        print("  fanowskie, które powtarza nazwę narzędzia w opisie, potrafi")
+        print("  wyprzedzić oryginał. Kodu program nie czyta.")
+    return 0
+
+
 def cmd_untrusted():
     """Skan bazy pod kątem tekstu wyglądającego na instrukcje (prompt injection).
 
@@ -1231,6 +1258,9 @@ def main():
         cmd_enrich(_flag_int(args, "--limit"))
     elif cmd == "backfill":
         cmd_backfill(_flag_int(args, "--limit"), force="--force" in args)
+    elif cmd in {"selfcheck", "sprawdz-siebie"}:
+        tools_db, _, _ = dbs()
+        cmd_selfcheck(tools_db)
     elif cmd in {"untrusted", "trust"}:
         cmd_untrusted()
     elif cmd == "validate":

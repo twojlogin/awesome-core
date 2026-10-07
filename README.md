@@ -452,6 +452,30 @@ README nie są dołączane do repo — pobierasz je na swój dysk przez
 
 ## Znane ograniczenia (uczciwie)
 
+**Ranking czyta to, co napisał autor — nie kod.** Nazwa, opis, gwiazdki,
+tematy, README: wszystko to można napisać dowolnie i wszystko wchodzi do
+score. Program **nigdy nie zagląda do kodu repozytorium**, więc nie odróżnia
+narzędzia od kolekcji skryptów o tej samej nazwie ani oryginału od kopii.
+
+Mierzalny skutek: `awesome selfcheck` sprawdza 15 znanych narzędzi
+(nazwa → właściwe repozytorium) i zwykle trafia **13/15 na pozycji #1**.
+Dwie porażki to zawsze ten sam mechanizm — repozytorium fanowskie, które
+powtarza nazwę narzędzia w opisie, wyprzedza oryginał.
+
+```bash
+./awesome selfcheck
+```
+
+To jest granica tego podejścia, nie do poprawienia strojeniem wag: do jej
+przekroczenia trzeba by patrzeć na zawartość repozytorium (importy, pliki
+wejściowe, tagi wydań), a to osobny projekt. Świadomie tego nie udaję.
+
+**Mniej poważne, ale też powiedziane:**
+- 91% narzędzi występuje w jednej liście, więc dla nich „zgoda kuratorów"
+  wynosi zero — teza działa na głowie katalogu, nie na ogonie
+- 75 571 wpisów to linki poza GitHubem (artykuły, filmy, dokumentacja):
+  nigdy nie dostaną gwiazdek i nie są narzędziami
+
 * **Wyszukiwarka GitHuba oddaje maks. 1000 wyników na jedno zapytanie.**
   Dlatego pobieranie używa kilku zapytań naraz (`--wide`) i skaluje wyniki.
 * **Prawdziwy język narzędzia** znamy tylko dla repozytoriów sprawdzonych przez
