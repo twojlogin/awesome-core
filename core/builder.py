@@ -449,9 +449,13 @@ def _build_tool_rows(best, all_mentions, repos, repo_quality, carried, tool_meta
 
 
 def _write(conn, rows, mention_rows, repo_quality, clone_rows, verbose):
+    # Kolejność ma znaczenie dla przeżywalności: _save_clones kończy się
+    # własnym commit() (linia niżej). Gdyby stało po DELETE, przerwany build
+    # zostawiałby pustą bazę — kasowanie byłoby zapisane, a wstawianie nie.
+    # Stąd: wszystko, co commituje, zanim cokolwiek skasujemy.
+    _save_clones(conn, clone_rows)
     conn.execute("DELETE FROM tools")
     conn.execute("DELETE FROM tool_mentions")
-    _save_clones(conn, clone_rows)
     conn.executemany(
         "UPDATE repos SET quality=? WHERE full_name=?",
         [(value, full_name) for full_name, value in repo_quality.items()],

@@ -122,7 +122,17 @@ Program sprawdza, czy masz wszystko, potem:
 | 1 | pobiera README awesome list z GitHuba (pomija to, co już masz) | 10–25 min |
 | 2 | wyciąga z nich narzędzia do bazy | ~2 min |
 | 3 | dociąga gwiazdki i języki list | ~1 min |
-| 4 | gotowe | — |
+| 4 | **włącza Web UI** i czeka | — |
+
+**Jeśli baza już jest zbudowana, `start` nie pobiera nic od nowa.** Wypisuje
+liczbę narzędzi i od razu włącza interfejs. Przebudowa wymaga świadomej decyzji:
+
+```bash
+./awesome start --rebuild    # kasuje bazę i buduje od nowa (~2 min)
+./awesome refresh            # dociąga brakujące dane i przebudowuje
+```
+
+Dzięki temu przypadkowe `./awesome start` nie kasuje Ci 2 minuty pracy.
 
 **Uwaga, uczciwie:** `start` nie odpytuje GitHuba o repozytoria samych
 narzędzi. Ranking od razu działa (na zgodzie kuratorów), ale gwiazdka przy
@@ -422,7 +432,7 @@ słyszałeś, to znak sprawdzenia — nie polecenia instalacji.
 | Słowo | Co to znaczy |
 |---|---|
 | **awesome list** | lista linków do narzędzi prowadzona na GitHubie (np. `sindresorhus/awesome`) |
-| **baza (SQLite)** | jeden plik `data/awesome.db` z całym katalogiem; zwykły plik, możesz go skasować i przebudować |
+| **baza (SQLite)** | jeden plik `data/awesome.db` z całym katalogiem; zwykły plik, możesz go skasować i przebudować. Kasowanie i wstawianie idą w jednej transakcji, więc przerwany build zostawia poprzednią bazę, a nie pustą |
 | **FTS5** | wbudowany w SQLite szybki indeks tekstowy — dzięki niemu szukanie trwa milisekundy |
 | **metadane listy** | gwiazdki, język, opis listy z GitHuba |
 | **metadane narzędzia** | gwiazdki, język i czy żyje repozytorium **samego narzędzia** |
@@ -520,7 +530,7 @@ cli/awesome_cli.py   # CLI
 cli/tui.py           # TUI (curses)
 web/app.py           # Flask UI
 web/templates/       # szablony Jinja2
-tests/smoke_test.py  # 105 testy (CI)
+tests/smoke_test.py  # 106 testy (CI)
 ```
 
 </details>

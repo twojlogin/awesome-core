@@ -16,7 +16,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from core import aliases, api, clones, doctor, fetcher, langmap, md, mcp, parser, poisoning, scoring, untrusted  # noqa: E402
+from core import aliases, api, builder, clones, doctor, fetcher, langmap, md, mcp, parser, poisoning, scoring, store, untrusted  # noqa: E402
 from core.builder import build  # noqa: E402
 from core.database import AwesomeDB  # noqa: E402
 from core import status as status_mod  # noqa: E402
@@ -1306,6 +1306,66 @@ class TestDatabase(unittest.TestCase):
         )
         self.assertEqual(again["tools"], self.summary["tools"])
         self.assertEqual(again["mentions"], self.summary["mentions"])
+
+    def test_interrupted_build_keeps_old_data(self):
+        """Przerwany build nie może zostawić pustych tabel.
+
+        Zdarzyło się to w prawdziwym użyciu: HTTP POST /rebuild kasuje
+        narzędzia, potem buduje przez 2 minuty. Roboczy człowiek (albo
+        timeout) ubił proces w trakcie i została baza z zerem narzędzi —
+        katalog 187k pozycji wyglądał jak pusty. Przyczyna: commity w
+        _save_clones() następowały PO `DELETE FROM tools`, więc kasowanie
+        było trwałe, a wstawianie nie zdążyło.
+
+        Ten test udaje przerwę i sprawdza, że stare dane są nadal na miejscu.
+        """
+        import sqlite3
+
+        damaged = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, damaged, True)
+        shutil.copytree(self.data_dir, damaged / "data")
+        db = store.db_path(damaged / "data")
+
+        before = sqlite3.connect(str(db)).execute(
+            "SELECT COUNT(*) FROM tools").fetchone()[0]
+        self.assertGreater(before, 0, "fixture musi mieć dane")
+
+        # Podmieniamy zapisywanie narzędzi na wyjątek — udajemy przerwę
+        # w trakcie wstawiania, po tym jak skasowano stare wiersze.
+        class PrzerwaneExecutemany:
+            """Czeka aż ktoś wywoła executemany, a potem rzuca przerwaniem.
+
+            Obiekt udaje połączenie: atrybuty, których używa _write(),
+            przekazuje do prawdziwego połączenia.
+            """
+
+            def __init__(self, real):
+                self._real = real
+                self.saw_insert = False
+
+            def execute(self, *args, **kwargs):
+                return self._real.execute(*args, **kwargs)
+
+            def executemany(self, sql, seq):
+                if "INSERT INTO tools" in sql:
+                    self.saw_insert = True
+                    raise KeyboardInterrupt("przerwano w trakcie wstawiania")
+                return self._real.executemany(sql, seq)
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+        conn = PrzerwaneExecutemany(sqlite3.connect(str(db)))
+        with self.assertRaises(KeyboardInterrupt):
+            builder._write(conn, [tuple(range(28))] * 10, [], {}, [], False)
+        conn.close()
+        self.assertTrue(conn.saw_insert, "test nie doszedł do wstawiania")
+
+        after = sqlite3.connect(str(db)).execute(
+            "SELECT COUNT(*) FROM tools").fetchone()[0]
+        self.assertEqual(after, before,
+                         "przerwany build zostawił bazę pustą — stare dane "
+                         "musiały zostać")
 
     def test_shortlist_roundtrip(self):
         shortlist = Shortlist(self.data_dir)

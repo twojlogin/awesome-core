@@ -742,8 +742,12 @@ def cmd_start(args):
     """Pierwsze uruchomienie: wszystko po kolei, po ludzku."""
     from core import status as status_mod
 
+    state = status_mod.collect(BASE_DIR / "data")
+    readmes = state.get("readmes", 0) if state.get("ready") else 0
+    gotowe = bool(state.get("ready") and state.get("tools"))
+
     print("=" * 66)
-    print(" Awesome Core — pierwsze uruchomienie")
+    print(" Awesome Core" if gotowe else " Awesome Core — pierwsze uruchomienie")
     print("=" * 66)
 
     problems = check_requirements()
@@ -758,19 +762,28 @@ def cmd_start(args):
         print("Nie potrzebujesz jq ani curl — pobieranie jest w Pythonie.")
         return 1
 
-    state = status_mod.collect(BASE_DIR / "data")
-    readmes = state.get("readmes", 0) if state.get("ready") else 0
-    steps = list(START_STEPS)
+    # Baza gotowa = nie ciągniemy list od nowa. „start" ma włączać narzędzie,
+    # a nie przebudowywać katalog przy każdym kliknięciu. Odświeżanie to
+    # osobna komenda: ./awesome refresh.
+    if gotowe and "--full" not in args and "--rebuild" not in args:
+        print(f"\nBaza już gotowa — {state['tools']:,} narzędzi z "
+              f"{state.get('lists', 0)} list. Pomijam pobieranie i build.")
+        print("Odświeżyć dane: ./awesome download && ./awesome build")
+
+    steps = list(START_STEPS) if not gotowe or "--rebuild" in args else []
     if "--full" in args:
         steps.append(("enrich", "Pobieram metadane repozytoriów narzędzi",
                       "30–60 min"))
         steps.append(("build", "Przebudowuję bazę z nowymi gwiazdkami", "~2 min"))
-    elif readmes:
+    elif readmes and not gotowe:
         print("\n(Podpowiedź: ./awesome start --full zrobi też metadane "
               "narzędzi, ale to 30–60 min.)")
     if "--skip-download" in args:
         steps = [step for step in steps if step[0] != "download"]
         print(f"\nPominam pobieranie (masz już {readmes} plików README lokalnie).")
+
+    if not steps:
+        return cmd_web(None)
 
     print("\nPlan (nic nie działa w tle, widzisz postęp na każdym kroku):\n")
     for index, (_key, label, how_long) in enumerate(steps, 1):
@@ -819,13 +832,8 @@ def cmd_start(args):
             print("  ./awesome enrich && ./awesome build")
         print("Albo wszystko naraz od nowa: ./awesome start --full")
 
-    print("\nCo teraz? Jedno z tych:\n")
-    print('  ./awesome search "port scanner"')
-    print("  ./awesome search osint --domain security --min-consensus 3")
-    print("  ./awesome tui                      # terminal, interaktywnie")
-    print("  ./awesome web                      # przeglądarka")
-    print("\nCoś nie działa? ./awesome doctor")
-    return 0
+    print("\nUruchamiam interfejs. Ctrl+C zamyka.\n")
+    return cmd_web(None)
 
 
 def cmd_refresh(args):

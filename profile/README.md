@@ -9,7 +9,7 @@ Główne projekty:
 
 | Projekt | Co to robi |
 |---|---|
-| **[awesome-core](https://github.com/twojlogin/awesome-core)** | Katalog narzędzi z awesome list — **187 666 narzędzi z 829 list**, ranking oparty o zgodę niezależnych kuratorów, nie o gwiazdki list. CLI, TUI, Web, MCP. Czysty stdlib + jedna zależność, 105 testów, offline po pierwszym pobraniu. |
+| **[awesome-core](https://github.com/twojlogin/awesome-core)** | Katalog narzędzi z awesome list — **187 666 narzędzi z 829 list**, ranking oparty o zgodę niezależnych kuratorów, nie o gwiazdki list. CLI, TUI, Web, MCP. Czysty stdlib + jedna zależność, 106 testów, offline po pierwszym pobraniu. |
 | **[ROZDANIA](https://github.com/twojlogin/ROZDANIA)** | Agregator giveawayów i darmowych pakietów (archive.org, Epic, IndieGala, GamerPower) z **osobnym krokiem weryfikacji**, który otwiera stronę każdej oferty. 624 paczki, 49 potwierdzonych ofert. Zero zależności zewnętrznych. |
 | **[matrixhunt-ultimate](https://github.com/twojlogin/matrixhunt-ultimate)** | Lokalna aplikacja webowa: scrapery, dashboard, **proxy stron z sanacją HTML**, 30 tras API, token na zmiany stanu. React w vendoringu, żeby działało offline. |
 | **[Case study: audyt pracy AI](https://github.com/twojlogin/awesome-core/blob/main/docs/case-study-audyt-ai.md)** | Co okazało się nieprawdziwe w kodzie i dokumentacji napisanych przez model: 6 kłamstw w dokumentacji, martwa komenda, wyciek ścieżki z katalogu domowego do publicznego repo, ranking mylący się w 2/15 znanych narzędziach — i metoda, która to wykrywa. |
@@ -46,8 +46,9 @@ punktację da się rozłożyć (`awesome why nmap`).
 
 - **187 666 narzędzi** z **829 list** (1 032 pobrane), 216 383 wzmianek, 81 języków
 - **SQLite + FTS5** zamiast plików JSON — 234.5 MB danych, milisekundowe
-  wyszukiwanie (3–16 ms), indeksy i transakcje, żeby przerwany build nie
-  zniszczył bazy
+  wyszukiwanie (3–16 ms), indeksy i transakcje — kasowanie i wstawianie idą
+  w jednej transakcji, więc przerwany build zostawia poprzednią bazę (test
+  `test_interrupted_build_keeps_old_data`)
 - **Własny parser Markdown** (linki, tabele, badge'e, kod) + filtr śmieci:
   19 300 odrzuconych pozycji (reklamy, artykuły, sklepy, martwe subdomeny)
 - **Detekcja kopii list**: trzy listy kopiujące jedną to nie trzy niezależne
@@ -61,7 +62,7 @@ punktację da się rozłożyć (`awesome why nmap`).
   jedyne wejście AI, łatwo odłączalne; rdzeń to czysty stdlib
 - **Wydajność zmierzona, nie zgadnięta**: build 300 s → 100 s po analizie
   (jeden regex okazał się 11× wolniejszy niż oryginał i został wycofany)
-- **105 testów**, CI na Pythonie 3.8–3.12, jedna zależność zewnętrzna (Flask)
+- **106 testów**, CI na Pythonie 3.8–3.12, jedna zależność zewnętrzna (Flask)
 - **Zero kroków konfiguracji**: od `git clone` do pierwszego wyniku — jedno
   polecenie; brak Flaska, `jq`, `curl` i GitHub CLI nie blokuje pracy, a
   `./awesome doctor` odpowiada, co dokładnie jest nie tak

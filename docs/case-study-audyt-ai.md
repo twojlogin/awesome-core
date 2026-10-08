@@ -1,7 +1,7 @@
 # Audyt pracy AI — case study
 
 **Kontekst:** jedna sesja pracy nad projektem `awesome-core` (katalog narzędzi
-z awesome list, ~8,8k linii Pythona, 105 testów). Projekt, dokumentacja i
+z awesome list, ~8,8k linii Pythona, 106 testów). Projekt, dokumentacja i
 większość kodu napisana przez model. Poniżej — **co okazało się nieprawdziwe,
 jak to zostało wykryte i co z tego wynika dla audytu kodu generowanego przez AI.**
 
@@ -15,7 +15,7 @@ były zawsze, a istotne jest to, że zostały policzone, a nie wyczute.
 | co było napisane | rzeczywistość | jak wykryte |
 |---|---|---|
 | „234k+ tools from 2,047 awesome lists" w opisie repo na GitHubie | 186 861 narzędzi z 1 026 list (+26%) | porównanie z `./awesome status` |
-| „32 testy (CI)" w README | 105 testów | odczyt `def test_` w kodzie |
+| „32 testy (CI)" w README | 106 testów | odczyt `def test_` w kodzie |
 | `/help` sugeruje `enrich --limit 20000` | limit ucinał pracę w połowie | sprawdzenie, co robi komenda |
 | przykład `--lang Python --os windows` | **1 wynik**, i to śmieciowy | uruchomienie przykładu z dokumentacji |
 | `awesome help`: 4 komendy bez wcięcia, 6 nieudokumentowanych | kod je obsługiwał | wyłuskanie komend z dokumentacji i uruchomienie każdej |
