@@ -9,7 +9,7 @@ Główne projekty:
 
 | Projekt | Co to robi |
 |---|---|
-| **[awesome-core](https://github.com/twojlogin/awesome-core)** | Katalog narzędzi z awesome list — **186 861 narzędzi z 829 list**, ranking oparty o zgodę niezależnych kuratorów, nie o gwiazdki list. CLI, TUI, Web, MCP. Czysty stdlib + jedna zależność, 105 testów, offline po pierwszym pobraniu. |
+| **[awesome-core](https://github.com/twojlogin/awesome-core)** | Katalog narzędzi z awesome list — **187 666 narzędzi z 829 list**, ranking oparty o zgodę niezależnych kuratorów, nie o gwiazdki list. CLI, TUI, Web, MCP. Czysty stdlib + jedna zależność, 105 testów, offline po pierwszym pobraniu. |
 | **[ROZDANIA](https://github.com/twojlogin/ROZDANIA)** | Agregator giveawayów i darmowych pakietów (archive.org, Epic, IndieGala, GamerPower) z **osobnym krokiem weryfikacji**, który otwiera stronę każdej oferty. 624 paczki, 49 potwierdzonych ofert. Zero zależności zewnętrznych. |
 | **[matrixhunt-ultimate](https://github.com/twojlogin/matrixhunt-ultimate)** | Lokalna aplikacja webowa: scrapery, dashboard, **proxy stron z sanacją HTML**, 30 tras API, token na zmiany stanu. React w vendoringu, żeby działało offline. |
 | **[Case study: audyt pracy AI](https://github.com/twojlogin/awesome-core/blob/main/docs/case-study-audyt-ai.md)** | Co okazało się nieprawdziwe w kodzie i dokumentacji napisanych przez model: 6 kłamstw w dokumentacji, martwa komenda, wyciek ścieżki z katalogu domowego do publicznego repo, ranking mylący się w 2/15 znanych narzędziach — i metoda, która to wykrywa. |
@@ -24,24 +24,10 @@ izolowanym środowisku, licencje i opisy po angielsku dodane.
 | **[Email-Security-Manager](https://github.com/technoporada/Email-Security-Manager)** | Analiza zagrożeń w e-mailu, sprawdzanie linków, wykrywanie oszustw telefonicznych, zgłaszanie nadużyć. FastAPI, zero kont, zero kluczy API. | **27** |
 | **[unified-chaos-platform](https://github.com/technoporada/unified-chaos-platform)** | Zintegrowana platforma testowania bezpieczeństwa sieci: 10 modułów, dashboard, terminal WebSocket. | **59** |
 | **[matrix-command](https://github.com/technoporada/matrix-command)** | Dashboard reconu bezpieczeństwa: backend FastAPI + interfejs webowy, skanowanie sieci i zbieranie danych OSINT. | **22** |
-| **[MatrixHunt](https://github.com/technoporada/MatrixHunt)** | Agregator darmowych gier i ofert AI (PyQt6 + playwright + FastAPI) — starsza wersja, nowsza niżej. | **13** |
+| **[MatrixHunt](https://github.com/technoporada/MatrixHunt)** | Agregator darmowych gier i ofert AI (PyQt6 + playwright + FastAPI) — **archiwum**, zastąpione przez matrixhunt-ultimate. | **13** |
 | **[WindowsToolkit-Pro](https://github.com/technoporada/WindowsToolkit-Pro)** | Zestaw skryptów PowerShell do Windowsa: bezpieczeństwo, optymalizacja, konfiguracja środowiska. | brak (sprawdzona składnia skryptów) |
 
-Projekty security (hardening Linuksa w bashu, skrypty PowerShell do Windowsa,
-dashboard reconu w FastAPI, menadżer zestawów narzędzi) są publiczne na
-[technoporada](https://github.com/technoporada) i **przechodzą przegląd, zanim
-trafią tutaj** — 226 przechodzących testów, ale trzeba jeszcze porządki w
-opisach i tematach.
 
----|---|---|
-| **[awesome-core](https://github.com/twojlogin/awesome-core)** | Katalog narzędzi z awesome list — 186 861 narzędzi z 829 list, ranking oparty o zgodę niezależnych kuratorów. CLI, TUI, Web, MCP. Python stdlib + jedna zależność. | ✅ publiczne |
-| `ArekBox-Installer` | Modularny menadżer zestawów narzędzi na Linuksie — jeden skrypt, bez zależności
-| `security-rocket` | Hardening Linuksa w bashu: SSH, UFW, AppArmor, sysctl, AIDE — z preflightem, backupem i rollbackiem
-| `WindowsToolkit-Pro` | Skrypty PowerShell do Windowsa: bezpieczeństwo, optymalizacja, setup
-| `matrix-command` | Dashboard reconu bezpieczeństwa: backend FastAPI + interfejs webowy
-| `softhunt` | Wyszukiwanie i odkrywanie oprogramowania między platformami
-
-Linki do projektów po migracji pojawią się tutaj.
 
 ---
 
@@ -58,8 +44,8 @@ punktację da się rozłożyć (`awesome why nmap`).
 
 **Skala i inżynieria:**
 
-- **186 861 narzędzi** z **829 list** (1 032 pobrane), 215 327 wzmianek, 81 języków
-- **SQLite + FTS5** zamiast plików JSON — 171 MB danych, milisekundowe
+- **187 666 narzędzi** z **829 list** (1 032 pobrane), 216 383 wzmianek, 81 języków
+- **SQLite + FTS5** zamiast plików JSON — 234.5 MB danych, milisekundowe
   wyszukiwanie (3–16 ms), indeksy i transakcje, żeby przerwany build nie
   zniszczył bazy
 - **Własny parser Markdown** (linki, tabele, badge'e, kod) + filtr śmieci:
