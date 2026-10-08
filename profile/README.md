@@ -14,6 +14,19 @@ Główne projekty:
 | **[matrixhunt-ultimate](https://github.com/twojlogin/matrixhunt-ultimate)** | Lokalna aplikacja webowa: scrapery, dashboard, **proxy stron z sanacją HTML**, 30 tras API, token na zmiany stanu. React w vendoringu, żeby działało offline. |
 | **[Case study: audyt pracy AI](https://github.com/twojlogin/awesome-core/blob/main/docs/case-study-audyt-ai.md)** | Co okazało się nieprawdziwe w kodzie i dokumentacji napisanych przez model: 6 kłamstw w dokumentacji, martwa komenda, wyciek ścieżki z katalogu domowego do publicznego repo, ranking mylący się w 2/15 znanych narzędziach — i metoda, która to wykrywa. |
 
+### Security i automatyzacja (repozytoria na [technoporada](https://github.com/technoporada))
+
+Przejrzane: sprawdzone pod kątem wyciekniętych sekretów, uruchomione w
+izolowanym środowisku, licencje i opisy po angielsku dodane.
+
+| Projekt | Co to robi | Testy |
+|---|---|---|
+| **[Email-Security-Manager](https://github.com/technoporada/Email-Security-Manager)** | Analiza zagrożeń w e-mailu, sprawdzanie linków, wykrywanie oszustw telefonicznych, zgłaszanie nadużyć. FastAPI, zero kont, zero kluczy API. | **27** |
+| **[unified-chaos-platform](https://github.com/technoporada/unified-chaos-platform)** | Zintegrowana platforma testowania bezpieczeństwa sieci: 10 modułów, dashboard, terminal WebSocket. | **59** |
+| **[matrix-command](https://github.com/technoporada/matrix-command)** | Dashboard reconu bezpieczeństwa: backend FastAPI + interfejs webowy, skanowanie sieci i zbieranie danych OSINT. | **22** |
+| **[MatrixHunt](https://github.com/technoporada/MatrixHunt)** | Agregator darmowych gier i ofert AI (PyQt6 + playwright + FastAPI) — starsza wersja, nowsza niżej. | **13** |
+| **[WindowsToolkit-Pro](https://github.com/technoporada/WindowsToolkit-Pro)** | Zestaw skryptów PowerShell do Windowsa: bezpieczeństwo, optymalizacja, konfiguracja środowiska. | brak (sprawdzona składnia skryptów) |
+
 Projekty security (hardening Linuksa w bashu, skrypty PowerShell do Windowsa,
 dashboard reconu w FastAPI, menadżer zestawów narzędzi) są publiczne na
 [technoporada](https://github.com/technoporada) i **przechodzą przegląd, zanim
@@ -97,7 +110,7 @@ GitHub: [twojlogin](https://github.com/twojlogin) ·
 profil: [twojlogin.github.io](https://twojlogin.github.io/)
 
 <!--
-  Kopia profilu GitHub (twojlogin/twojlogin). Po odtworzeniu z API popraw
-  i wrzuć: cp profile/README.md /tmp/profrepo/README.md && cd /tmp/profrepo \
+  Kopia profilu GitHub (twojlogin/twojlogin). Aby wrzucić zmiany:
+  cp profile/README.md /tmp/profrepo/README.md && cd /tmp/profrepo \
   && git add README.md && git commit -m "profil" && git push
 -->
