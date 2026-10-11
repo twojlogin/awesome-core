@@ -14,6 +14,13 @@ import json
 import sys
 from pathlib import Path
 
+# Klient MCP uruchamia serwer jako skrypt ("python core/mcp.py"), a wtedy
+# katalog nadrzędny nie jest na sys.path i `from core import ...` wywala się.
+# Modułowo (-m core.mcp) działa, skryptowo nie — a to właśnie skryptowo
+# uruchamia Claude, Cursor i każdy wpis z rejestru MCP.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from core import store, untrusted
 from core.tools_db import ToolsDB
 
