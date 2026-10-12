@@ -1,20 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.twojlogin/awesome-core",
-  "title": "Awesome Core",
-  "description": "Offline catalog of 187k developer tools from 1032 awesome lists: search, explain, facets.",
   "version": "2.0.0",
-  "websiteUrl": "https://github.com/twojlogin/awesome-core",
-  "repository": {
-    "url": "https://github.com/twojlogin/awesome-core",
-    "source": "github",
-    "id": "1407923884"
-  },
-  "_meta": {
-    "io.modelcontextprotocol.registry/publisher-provided": {
-      "com.github": {
-        "language": "Python"
-      }
-    }
-  }
+  "description": "Offline catalog of awesome tools with CLI, TUI, Web UI and MCP. Read-only SQLite, no API keys, offline-first.",
+  "license": "MIT",
+  "author": "Arkadiusz Słowik",
+  "homepage": "https://github.com/twojlogin/awesome-core"
 }
