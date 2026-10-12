@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.twojlogin/awesome-core",
   "version": "2.0.0",
-  "description": "Offline catalog of awesome tools with CLI, TUI, Web UI and MCP. Read-only SQLite, no API keys, offline-first.",
+  "description": "Enables AI agents to search, filter, and explore a local offline catalog of tools from awesome lists, including finding underrated tools, explaining ranking provenance, listing curator lists, and inspecting catalog facets. All access is read-only over local SQLite with no network calls or API keys.",
   "license": "MIT",
   "author": "Arkadiusz Słowik",
   "homepage": "https://github.com/twojlogin/awesome-core"
