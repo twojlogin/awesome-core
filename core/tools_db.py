@@ -47,7 +47,8 @@ def owner_of(url_norm):
     if not parts:
         return ""
     host = parts[0].lower()
-    if host.endswith("github.com") or host.endswith("gitlab.com"):
+    allowed_hosts = ("github.com", "gitlab.com")
+    if any(host == d or host.endswith("." + d) for d in allowed_hosts):
         return parts[1] if len(parts) > 2 else ""
     return ""
 
