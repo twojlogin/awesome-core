@@ -306,8 +306,10 @@ class Renderer:
             index += 1
         tag = "ol" if ordered else "ul"
         body = "".join(
-            f"<li>{''.join(chunk for chunk in item if not chunk.startswith('<p class=\"md-cont\"'))}"
-            f"{''.join(chunk for chunk in item if chunk.startswith('<p class=\"md-cont\"'))}</li>"
+            "<li>"
+            + "".join(chunk for chunk in item if not chunk.startswith('<p class="md-cont"'))
+            + "".join(chunk for chunk in item if chunk.startswith('<p class="md-cont"'))
+            + "</li>"
             for item in items
         )
         return f"<{tag}>{body}</{tag}>", index
