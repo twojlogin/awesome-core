@@ -6,6 +6,7 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import (
     Flask, abort, flash, redirect, render_template, request, url_for,
@@ -377,7 +378,13 @@ def shortlist_add():
         return redirect(url_for("index"))
     _status, message = get_shortlist().add(tool, note)
     flash(f"{message}: {tool['name']}", "success")
-    return redirect(request.form.get("back") or f"/tool/{tool['url_norm']}")
+    back = (request.form.get("back") or "").replace("\\", "")
+    parsed_back = urlparse(back)
+    if back.startswith("/") and not parsed_back.scheme and not parsed_back.netloc:
+        target = back
+    else:
+        target = f"/tool/{tool['url_norm']}"
+    return redirect(target)
 
 
 @app.route("/shortlist/remove", methods=["POST"])
