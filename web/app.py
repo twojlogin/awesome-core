@@ -558,8 +558,12 @@ def run_step(step, topic="awesome-list", limit=20000):
             [sys.executable, "core/enrich.py", "--limit", str(limit)], timeout=7200
         )
     elif step == "download":
+        safe_topic = (topic or "").strip().lower()
+        if not TOPIC_RE.fullmatch(safe_topic):
+            flash("Nieprawidłowy topic (dozwolone: a-z, 0-9, myślnik).", "error")
+            return redirect(url_for("refresh_page"))
         code, log = run_script(
-            ["bash", "download.sh", topic, "100", "1", "20", "--wide"], timeout=7200
+            ["bash", "download.sh", safe_topic, "100", "1", "20", "--wide"], timeout=7200
         )
     else:
         flash("Nieznany krok", "error")
