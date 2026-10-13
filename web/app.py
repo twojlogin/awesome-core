@@ -515,8 +515,23 @@ def add_repo():
 
 
 def fetch_readme(owner, name):
+    segment_re = re.compile(r"^[A-Za-z0-9._-]+$")
+    if (
+        not owner
+        or not name
+        or owner in {".", ".."}
+        or name in {".", ".."}
+        or not segment_re.fullmatch(owner)
+        or not segment_re.fullmatch(name)
+    ):
+        return False, "Nieprawidłowa nazwa właściciela lub repozytorium"
+
     full = f"{owner}/{name}"
-    path = README_DIR / f"{owner}__{name}.md"
+    base_dir = README_DIR.resolve()
+    path = (README_DIR / f"{owner}__{name}.md").resolve()
+    if base_dir not in path.parents:
+        return False, "Nieprawidłowa ścieżka docelowa"
+
     if path.exists():
         return True, "Już pobrane"
     path.parent.mkdir(parents=True, exist_ok=True)
