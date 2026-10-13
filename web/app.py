@@ -6,6 +6,7 @@ import re
 import socket
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -35,15 +36,60 @@ INDEX_FILE = BASE_DIR / "offline-db" / "data" / "index.json"
 TOPIC_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$")
 
 
-
-
-
 _readme_cache = {}
+_db_lock = threading.Lock()
 
 tools_db = None
 repo_db = None
 curator = None
 shortlist = None
+
+
+def _safe_redirect_target(raw_target, fallback):
+    """Allow only internal absolute paths (starting with /) and nothing else.
+
+    This defends against open redirect attacks where an attacker can inject
+    an external URL into a form field that later gets used in redirect().
+    """
+    if not raw_target:
+        return fallback
+    value = raw_target.replace("\\", "")
+    parsed = urlparse(value)
+    if value.startswith("/") and not parsed.scheme and not parsed.netloc:
+        return value
+    return fallback
+
+
+def _parse_github_repo_ref(value):
+    """Parse GitHub repo references in common forms and return (owner, name).
+
+    Accepts:
+    - full https URLs: https://github.com/owner/name or with trailing paths
+    - ssh form: git@github.com:owner/name.git
+    - plain owner/name
+    Returns (owner, name) or (None, None) on failure.
+    """
+    if not value:
+        return None, None
+    text = value.strip().rstrip("/")
+    # SSH form
+    if text.startswith("git@github.com:"):
+        text = text.split("git@github.com:", 1)[1]
+    # https/http
+    elif "github.com/" in text:
+        text = text.split("github.com/", 1)[1]
+    # If it looks like an URL with other host, bail out
+    elif text.startswith("http://") or text.startswith("https://"):
+        return None, None
+    # Remove query/fragment and .git suffix
+    text = text.split("?", 1)[0].split("#", 1)[0]
+    if text.endswith('.git'):
+        text = text[:-4]
+    parts = [p for p in text.split("/") if p]
+    if len(parts) < 2:
+        return None, None
+    owner, name = parts[0], parts[1]
+    return owner, name
 
 
 def get_shortlist():
@@ -54,13 +100,21 @@ def get_shortlist():
 
 
 def dbs():
+    """Return singleton instances for tools_db, repo_db and curator.
+
+    Make initialization thread-safe so concurrent requests don't race to
+    create the same objects.
+    """
     global tools_db, repo_db, curator
-    if tools_db is None:
-        tools_db = ToolsDB(BASE_DIR / "data")
-    if repo_db is None:
-        repo_db = AwesomeDB(BASE_DIR / "data")
-    if curator is None:
-        curator = ToolCurator(BASE_DIR / "data")
+    if tools_db is not None and repo_db is not None and curator is not None:
+        return tools_db, repo_db, curator
+    with _db_lock:
+        if tools_db is None:
+            tools_db = ToolsDB(BASE_DIR / "data")
+        if repo_db is None:
+            repo_db = AwesomeDB(BASE_DIR / "data")
+        if curator is None:
+            curator = ToolCurator(BASE_DIR / "data")
     return tools_db, repo_db, curator
 
 
@@ -381,11 +435,7 @@ def shortlist_add():
     _status, message = get_shortlist().add(tool, note)
     flash(f"{message}: {tool['name']}", "success")
     back = (request.form.get("back") or "").replace("\\", "")
-    parsed_back = urlparse(back)
-    if back.startswith("/") and not parsed_back.scheme and not parsed_back.netloc:
-        target = back
-    else:
-        target = f"/tool/{tool['url_norm']}"
+    target = _safe_redirect_target(back, f"/tool/{tool['url_norm']}")
     return redirect(target)
 
 
@@ -490,21 +540,21 @@ def tool_action():
 def add_repo():
     if request.method == "GET":
         return render_template("add.html")
-    url_value = request.args.get("url", "").strip().rstrip("/")
+    # Accept form POST first, then fallback to query string for compatibility
+    url_value = (request.form.get("url") or request.args.get("url") or "").strip().rstrip("/")
     if not url_value:
         flash("Podaj URL repozytorium", "error")
         return redirect(url_for("add_repo"))
-    parsed = urlparse(url_value)
-    host = (parsed.hostname or "").lower()
-    if host not in {"github.com", "www.github.com"}:
-        flash("Tylko GitHub jest wspierany", "error")
-        return redirect(url_for("add_repo"))
 
-    parts = [p for p in parsed.path.strip("/").split("/") if p]
-    if len(parts) < 2:
+    owner, name = _parse_github_repo_ref(url_value)
+    if not owner or not name:
         flash("Nieprawidłowy URL GitHub", "error")
         return redirect(url_for("add_repo"))
-    owner, name = parts[0], parts[1]
+
+    # Basic sanitization: owner/name must be simple tokens
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", owner) or not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+        flash("Nieprawidłowy owner/nazwa repozytorium", "error")
+        return redirect(url_for("add_repo"))
 
     ok, message = fetch_readme(owner, name)
     if not ok:
