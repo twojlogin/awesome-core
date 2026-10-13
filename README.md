@@ -258,8 +258,6 @@ jako brakującej pracy.
 | języków | **81** |
 | linki żywe / martwe | **100 868 / 9 357** |
 | spoza GitHuba (bez gwiazdek z definicji) | **76 148** |
-| katalog waży | **234.5 MB** |
-
 Aktualne liczby zawsze sprawdzisz: `./awesome status`. To jest stan z 6 października
 2026 — po `enrich` i pełnym przebudowaniu.
 
