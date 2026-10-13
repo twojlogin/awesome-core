@@ -494,15 +494,17 @@ def add_repo():
     if not url_value:
         flash("Podaj URL repozytorium", "error")
         return redirect(url_for("add_repo"))
-    if "github.com" in url_value:
-        parts = url_value.split("github.com/")[-1].strip("/").split("/")
-        if len(parts) < 2:
-            flash("Nieprawidłowy URL GitHub", "error")
-            return redirect(url_for("add_repo"))
-        owner, name = parts[0], parts[1]
-    else:
+    parsed = urlparse(url_value)
+    host = (parsed.hostname or "").lower()
+    if host not in {"github.com", "www.github.com"}:
         flash("Tylko GitHub jest wspierany", "error")
         return redirect(url_for("add_repo"))
+
+    parts = [p for p in parsed.path.strip("/").split("/") if p]
+    if len(parts) < 2:
+        flash("Nieprawidłowy URL GitHub", "error")
+        return redirect(url_for("add_repo"))
+    owner, name = parts[0], parts[1]
 
     ok, message = fetch_readme(owner, name)
     if not ok:
