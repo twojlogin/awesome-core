@@ -5,6 +5,7 @@ import json
 import time
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from core import clones as clones_mod, langmap, parser, scoring, store
 
@@ -301,10 +302,16 @@ def _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried):
 
 
 def _tool_meta_for(identity, tool_meta):
-    if not identity.startswith("github.com/") or not tool_meta:
+    if not identity or not tool_meta:
         return None
-    rest = identity[len("github.com/"):]
-    parts = [p for p in rest.split("/") if p]
+
+    raw = identity.strip()
+    parsed = urlsplit(raw if "://" in raw else f"//{raw}")
+    host = (parsed.hostname or "").lower()
+    if host != "github.com":
+        return None
+
+    parts = [p for p in parsed.path.split("/") if p]
     if len(parts) < 2:
         return None
     return tool_meta.get(f"{parts[0]}/{parts[1]}".lower())
