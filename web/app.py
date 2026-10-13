@@ -2,6 +2,7 @@
 """web/app.py — Awesome Core: Flask UI (CLI / TUI / Web na jednym silniku)."""
 
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -31,6 +32,7 @@ README_DIR = BASE_DIR / "offline-db" / "data" / "readmes"
 
 
 INDEX_FILE = BASE_DIR / "offline-db" / "data" / "index.json"
+TOPIC_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$")
 
 
 
@@ -531,9 +533,12 @@ def fetch_readme(owner, name):
 
 @app.route("/add/topic", methods=["POST"])
 def add_topic():
-    topic = request.form.get("topic", "").strip()
+    topic = request.form.get("topic", "").strip().lower()
     if not topic:
         flash("Podaj topic", "error")
+        return redirect(url_for("add_repo"))
+    if not TOPIC_RE.fullmatch(topic):
+        flash("Nieprawidłowy topic (dozwolone: a-z, 0-9, myślnik).", "error")
         return redirect(url_for("add_repo"))
     return run_step("download", topic)
 
