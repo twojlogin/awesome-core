@@ -103,6 +103,7 @@ class ToolCurator:
 
         url_lower = url.lower()
         parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
 
         # Git repos (GitHub, GitLab, etc.)
         if parsed.scheme in {"http", "https"} and parsed.netloc.lower() in {
@@ -112,31 +113,31 @@ class ToolCurator:
             return "git"
 
         # Python packages
-        if url_lower.endswith(".py") or "pypi.org" in url_lower or "pypi.python.org" in url_lower:
+        if url_lower.endswith(".py") or host in {"pypi.org", "pypi.python.org"}:
             return "pip"
 
         # Node.js packages
-        if "npmjs.com" in url_lower or "npmjs.org" in url_lower:
+        if host in {"npmjs.com", "www.npmjs.com", "npmjs.org", "www.npmjs.org"}:
             return "npm"
 
         # Rust packages
-        if "crates.io" in url_lower:
+        if host == "crates.io" or host.endswith(".crates.io"):
             return "cargo"
 
         # Ruby gems
-        if "rubygems.org" in url_lower:
+        if host == "rubygems.org" or host.endswith(".rubygems.org"):
             return "gem"
 
         # Go packages
-        if "pkg.go.dev" in url_lower or "godoc.org" in url_lower:
+        if host in {"pkg.go.dev", "godoc.org"} or host.endswith(".pkg.go.dev") or host.endswith(".godoc.org"):
             return "go"
 
         # Docker
-        if "hub.docker.com" in url_lower or "docker.com" in url_lower:
+        if host == "hub.docker.com" or host == "docker.com" or host.endswith(".docker.com"):
             return "docker"
 
         # APT packages
-        if "packages.ubuntu.com" in url_lower or "packages.debian.org" in url_lower:
+        if host == "packages.ubuntu.com" or host == "packages.debian.org":
             return "apt"
 
         return None
