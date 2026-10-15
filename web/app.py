@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from flask import (
     Flask, abort, flash, redirect, render_template, request, url_for,
 )
+from werkzeug.utils import secure_filename
 
 
 BASE_DIR = Path(__file__).parent.parent
@@ -526,10 +527,17 @@ def fetch_readme(owner, name):
     ):
         return False, "Nieprawidłowa nazwa właściciela lub repozytorium"
 
+    safe_owner = secure_filename(owner)
+    safe_name = secure_filename(name)
+    if not safe_owner or not safe_name or safe_owner != owner or safe_name != name:
+        return False, "Nieprawidłowa nazwa właściciela lub repozytorium"
+
     full = f"{owner}/{name}"
     base_dir = README_DIR.resolve()
-    path = (README_DIR / f"{owner}__{name}.md").resolve()
-    if base_dir not in path.parents:
+    path = (README_DIR / f"{safe_owner}__{safe_name}.md").resolve()
+    try:
+        path.relative_to(base_dir)
+    except ValueError:
         return False, "Nieprawidłowa ścieżka docelowa"
 
     if path.exists():
