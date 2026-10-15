@@ -33,7 +33,7 @@ README_DIR = BASE_DIR / "offline-db" / "data" / "readmes"
 
 INDEX_FILE = BASE_DIR / "offline-db" / "data" / "index.json"
 TOPIC_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$")
-
+REPO_PART_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 
@@ -515,8 +515,15 @@ def add_repo():
 
 
 def fetch_readme(owner, name):
+    if not REPO_PART_RE.fullmatch(owner) or not REPO_PART_RE.fullmatch(name):
+        return False, "Nieprawidłowa nazwa repozytorium"
     full = f"{owner}/{name}"
-    path = README_DIR / f"{owner}__{name}.md"
+    base_dir = README_DIR.resolve()
+    path = (README_DIR / f"{owner}__{name}.md").resolve()
+    try:
+        path.relative_to(base_dir)
+    except ValueError:
+        return False, "Nieprawidłowa ścieżka repozytorium"
     if path.exists():
         return True, "Już pobrane"
     path.parent.mkdir(parents=True, exist_ok=True)
