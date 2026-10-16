@@ -33,7 +33,7 @@ README_DIR = BASE_DIR / "offline-db" / "data" / "readmes"
 
 INDEX_FILE = BASE_DIR / "offline-db" / "data" / "index.json"
 TOPIC_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$")
-
+REPO_PART_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 
@@ -494,15 +494,17 @@ def add_repo():
     if not url_value:
         flash("Podaj URL repozytorium", "error")
         return redirect(url_for("add_repo"))
-    if "github.com" in url_value:
-        parts = url_value.split("github.com/")[-1].strip("/").split("/")
-        if len(parts) < 2:
-            flash("Nieprawidłowy URL GitHub", "error")
-            return redirect(url_for("add_repo"))
-        owner, name = parts[0], parts[1]
-    else:
+    parsed = urlparse(url_value)
+    host = (parsed.hostname or "").lower()
+    if host not in {"github.com", "www.github.com"}:
         flash("Tylko GitHub jest wspierany", "error")
         return redirect(url_for("add_repo"))
+
+    parts = [p for p in parsed.path.strip("/").split("/") if p]
+    if len(parts) < 2:
+        flash("Nieprawidłowy URL GitHub", "error")
+        return redirect(url_for("add_repo"))
+    owner, name = parts[0], parts[1]
 
     ok, message = fetch_readme(owner, name)
     if not ok:
@@ -549,6 +551,7 @@ def add_topic():
     if not TOPIC_RE.fullmatch(topic):
         flash("Nieprawidłowy topic (dozwolone: a-z, 0-9, myślnik).", "error")
         return redirect(url_for("add_repo"))
+    # Bezpieczna ścieżka: topic jest walidowane regexem, nie idzie do shella
     return run_step("download", topic)
 
 

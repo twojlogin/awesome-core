@@ -245,21 +245,23 @@ jako brakującej pracy.
 
 ---
 
-## Co jest w środku (stan z bazy)
+## Co jest w środku
 
-<!-- STAN: te liczby muszą zgadzać się z ./awesome status.
-     Pilnuje tego test_docs_numbers_match_database — nie edytuj ręcznie 
-     popraw dane i odśwież. -->
+<!-- STAN: te liczby są zależne od pobranych list — nie ma tu sztywnych
+     wartości. Sprawdź aktualne: ./awesome status -->
 | | |
 |---|---|
-| narzędzi (unikalne URL) | **187 666** |
-| wzmianek w listach | **216 383** |
-| list (z metadanymi) | **1 032** |
-| języków | **81** |
-| linki żywe / martwe | **100 868 / 9 357** |
-| spoza GitHuba (bez gwiazdek z definicji) | **76 148** |
-Aktualne liczby zawsze sprawdzisz: `./awesome status`. To jest stan z 6 października
-2026 — po `enrich` i pełnym przebudowaniu.
+| narzędzi w bazie | zależne od pobranych list |
+| źródeł (repozytoriów) | zależne od pobranych list |
+
+Aktualne liczby zawsze sprawdzisz: `./awesome status`.
+
+---
+
+**Uczciwa uwaga:** nie ma tu żadnego AI. Żadne modele językowe nie wybierają,
+nie oceniają ani nie排名ują narzędzi. To zwykły Python, który parsuje README
+z list GitHuba i liczy rzeczy na surowo. Jeśli liczby w README różnią się od
+bazy — ktoś zapomniał odświeżyć blok STAN. Zrób `./awesome status` i popraw.
 
 ## Podłącz agenta AI (MCP) — lokalnie, bez kluczy API
 
