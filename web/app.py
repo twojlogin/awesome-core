@@ -528,13 +528,15 @@ def fetch_readme(owner, name):
         return True, "Już pobrane"
     path.parent.mkdir(parents=True, exist_ok=True)
     for branch in ("main", "master"):
-        result = subprocess.run(
-            ["curl", "-f", "-s", "-o", str(path), "-w", "%{http_code}", "-L",
-             f"https://raw.githubusercontent.com/{full}/{branch}/README.md"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.stdout.strip() == "200":
-            return True, "Pobrano"
+        url = f"https://raw.githubusercontent.com/{full}/{branch}/README.md"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "MatrixHunt/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                if resp.status == 200:
+                    path.write_bytes(resp.read())
+                    return True, "Pobrano"
+        except Exception:
+            continue
     if path.exists():
         path.unlink()
     return False, "Nie znaleziono README"
@@ -549,6 +551,7 @@ def add_topic():
     if not TOPIC_RE.fullmatch(topic):
         flash("Nieprawidłowy topic (dozwolone: a-z, 0-9, myślnik).", "error")
         return redirect(url_for("add_repo"))
+    # Bezpieczna ścieżka: topic jest walidowane regexem, nie idzie do shella
     return run_step("download", topic)
 
 

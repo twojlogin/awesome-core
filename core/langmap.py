@@ -657,7 +657,9 @@ def url_identity(url):
     if host.startswith("www."):
         host = host[4:]
     path = _TREE_BLOB_RE.sub("/", path)
-    path = re.sub(r"//+", "/", path).rstrip("/")
+    while "//" in path:
+        path = path.replace("//", "/")
+    path = path.rstrip("/")
     if host in OFFICIAL_HOSTS:
         path = _GIT_SUFFIX_RE.sub("", path)
     return f"{host}{path}"
