@@ -513,19 +513,28 @@ def add_repo():
 
 
 def fetch_readme(owner, name):
+    if not REPO_PART_RE.fullmatch(owner) or not REPO_PART_RE.fullmatch(name):
+        return False, "Nieprawidłowa nazwa repozytorium"
     full = f"{owner}/{name}"
-    path = README_DIR / f"{owner}__{name}.md"
+    base_dir = README_DIR.resolve()
+    path = (README_DIR / f"{owner}__{name}.md").resolve()
+    try:
+        path.relative_to(base_dir)
+    except ValueError:
+        return False, "Nieprawidłowa ścieżka repozytorium"
     if path.exists():
         return True, "Już pobrane"
     path.parent.mkdir(parents=True, exist_ok=True)
     for branch in ("main", "master"):
-        result = subprocess.run(
-            ["curl", "-f", "-s", "-o", str(path), "-w", "%{http_code}", "-L",
-             f"https://raw.githubusercontent.com/{full}/{branch}/README.md"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.stdout.strip() == "200":
-            return True, "Pobrano"
+        url = f"https://raw.githubusercontent.com/{full}/{branch}/README.md"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "awesome-core/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                if resp.status == 200:
+                    path.write_bytes(resp.read())
+                    return True, "Pobrano"
+        except Exception:
+            continue
     if path.exists():
         path.unlink()
     return False, "Nie znaleziono README"
@@ -563,7 +572,7 @@ def run_step(step, topic="awesome-list", limit=20000):
             flash("Nieprawidłowy topic (dozwolone: a-z, 0-9, myślnik).", "error")
             return redirect(url_for("refresh_page"))
         code, log = run_script(
-            ["bash", "download.sh", safe_topic, "100", "1", "20", "--wide"], timeout=7200
+            [sys.executable, "fetch_topic.py", safe_topic, "100", "1", "20"], timeout=7200
         )
     else:
         flash("Nieznany krok", "error")
