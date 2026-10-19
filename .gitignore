@@ -32,3 +32,8 @@ logs/
 # złom po błędzie: "export --out" bez ścieżki pisał plik "--out" (171 MB)
 "--out"
 awesome-core/
+
+# artefakty budowania pakietu (PyPI)
+dist/
+build/
+*.egg-info/

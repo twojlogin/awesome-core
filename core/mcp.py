@@ -11,6 +11,7 @@ bo stdout jest kanałem protokołu.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -431,7 +432,8 @@ def demo(data_dir=None, query="port scanner"):
 
 def main(argv=None):
     args = list(argv if argv is not None else sys.argv[1:])
-    data_dir = Path(__file__).parent.parent / "data"
+    data_dir = Path(os.environ.get("AWESOME_DATA_DIR")
+                    or Path(__file__).parent.parent / "data")
     if "--demo" in args:
         query = args[args.index("--demo") + 1] if "--demo" in args and len(
             args) > args.index("--demo") + 1 else "port scanner"

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "awesome-core"
+version = "2.0.0"
+description = "Offline-first catalog of tools from GitHub awesome lists, exposed as a read-only MCP server (stdio). Pure stdlib core, no network, no API keys."
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [{ name = "Arkadiusz Słowik" }]
+keywords = ["mcp", "model-context-protocol", "awesome-list", "offline", "search", "cli", "sqlite"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Utilities",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/twojlogin/awesome-core"
+Repository = "https://github.com/twojlogin/awesome-core"
+Issues = "https://github.com/twojlogin/awesome-core/issues"
+
+[project.scripts]
+awesome-core = "core.mcp:main"
+
+[tool.setuptools]
+packages = ["core"]

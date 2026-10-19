@@ -1,0 +1,36 @@
+name: Publish to MCP Registry
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      # Rejestr weryfikuje, że pakiet istnieje w PyPI — poczekaj, aż workflow
+      # "Publish to PyPI" go wypchnie (albo uruchom ten workflow po nim).
+      - name: Wait for the package on PyPI
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf "https://pypi.org/pypi/awesome-core/json" >/dev/null; then
+              echo "PyPI: pakiet widoczny"; break
+            fi
+            echo "Czekam na PyPI... ($i/30)"; sleep 10
+          done
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server to MCP Registry
+        run: ./mcp-publisher publish
