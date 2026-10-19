@@ -299,7 +299,7 @@ _TRACKING_RE = re.compile(
 )
 
 
-_URL_RE = re.compile(r"https?://([^/]+)(/.*)?$", re.I)
+_URL_RE = re.compile(r"https?://([^/]+)(/[^?#\s]*)?", re.I)
 
 
 _TREE_BLOB_RE = re.compile(r"/(tree|blob)/[^/]+(/|$)")

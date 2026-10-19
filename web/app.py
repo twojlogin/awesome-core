@@ -517,7 +517,11 @@ def add_repo():
 def fetch_readme(owner, name):
     if not REPO_PART_RE.fullmatch(owner) or not REPO_PART_RE.fullmatch(name):
         return False, "Nieprawidłowa nazwa repozytorium"
-    full = f"{owner}/{name}"
+    # Dodatkowa ochrona przed traversalem: kropki, ukośniki, znaki kontrolne
+    if ".." in owner or ".." in name or "/" in owner or "/" in name:
+        return False, "Nieprawidłowa nazwa repozytorium"
+    if "\x00" in owner or "\x00" in name:
+        return False, "Nieprawidłowa nazwa repozytorium"
     base_dir = README_DIR.resolve()
     path = (README_DIR / f"{owner}__{name}.md").resolve()
     try:
@@ -596,6 +600,11 @@ def run_step(step, topic="awesome-list", limit=20000):
 
 def run_script(args, timeout=None):
     """Odpala składnię i zwraca (kod wyjścia, końcówkę logu)."""
+    if not isinstance(args, (list, tuple)) or not all(isinstance(a, str) for a in args):
+        raise ValueError("run_script args must be a list/tuple of strings")
+    for a in args:
+        if "\n" in a or "\r" in a or "\x00" in a:
+            raise ValueError("run_script argument contains control characters")
     try:
         result = subprocess.run(
             args, cwd=str(BASE_DIR), capture_output=True, text=True,
