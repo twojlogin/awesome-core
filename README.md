@@ -1,5 +1,10 @@
 # 🔥 Awesome Core
 
+[![PyPI](https://img.shields.io/pypi/v/awesome-core?label=PyPI)](https://pypi.org/project/awesome-core/)
+[![Python versions](https://img.shields.io/pypi/pyversions/awesome-core)](https://pypi.org/project/awesome-core/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#licencja)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.twojlogin%2Fawesome--core-6f42c1)](https://registry.modelcontextprotocol.io/v0/servers?search=awesome-core)
+
 <!-- mcp-name: io.github.twojlogin/awesome-core -->
 
 ## Czym to jest, w jednym zdaniu
@@ -295,6 +300,25 @@ Wpisz to do konfiguracji klienta, np. `claude_desktop_config.json`:
   }
 }
 ```
+
+Albo bez klonowania — prosto z PyPI (paczka `awesome-core`, obecna też
+w oficjalnym rejestrze MCP jako `io.github.twojlogin/awesome-core`):
+
+```json
+{
+  "mcpServers": {
+    "awesome-core": {
+      "command": "uvx",
+      "args": ["awesome-core"],
+      "env": { "AWESOME_DATA_DIR": "/pełna/ścieżka/do/awesome-core/data" }
+    }
+  }
+}
+```
+
+`uvx` pobierze i uruchomi serwer z PyPI. `AWESOME_DATA_DIR` musi wskazywać
+katalog z bazą zbudowaną przez `./awesome start` — sama paczka nie zawiera
+danych (baza ma ~194 MB i rośnie z każdym pobraniem).
 
 Co warto wiedzieć:
 
