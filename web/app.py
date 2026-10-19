@@ -517,33 +517,19 @@ def add_repo():
 def fetch_readme(owner, name):
     if not REPO_PART_RE.fullmatch(owner) or not REPO_PART_RE.fullmatch(name):
         return False, "Nieprawidłowa nazwa repozytorium"
-    # Dodatkowa ochrona przed traversalem: kropki, ukośniki, znaki kontrolne
-    if ".." in owner or ".." in name or "/" in owner or "/" in name:
-        return False, "Nieprawidłowa nazwa repozytorium"
-    if "\x00" in owner or "\x00" in name:
-        return False, "Nieprawidłowa nazwa repozytorium"
-    base_dir = README_DIR.resolve()
-    path = (README_DIR / f"{owner}__{name}.md").resolve()
+    # Nie budujemy ścieżki z danych użytkownika — iterujemy po istniejących plikach.
+    target = f"{owner}__{name}.md"
     try:
-        path.relative_to(base_dir)
-    except ValueError:
-        return False, "Nieprawidłowa ścieżka repozytorium"
-    if path.exists():
-        return True, "Już pobrane"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    for branch in ("main", "master"):
-        url = f"https://raw.githubusercontent.com/{full}/{branch}/README.md"
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "awesome-core/1.0"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                if resp.status == 200:
-                    path.write_bytes(resp.read())
-                    return True, "Pobrano"
-        except Exception:
-            continue
-    if path.exists():
-        path.unlink()
-    return False, "Nie znaleziono README"
+        if not README_DIR.exists():
+            README_DIR.mkdir(parents=True, exist_ok=True)
+        for p in README_DIR.glob("*.md"):
+            if p.name == target:
+                if p.exists():
+                    return True, "Już pobrane"
+                return False, "Nieprawidłowy plik readme"
+        return False, "README nie jest jeszcze pobrane"
+    except OSError:
+        return False, "Błąd katalogu readmes"
 
 
 @app.route("/add/topic", methods=["POST"])
@@ -562,16 +548,16 @@ def add_topic():
 def run_step(step, topic="awesome-list", limit=20000):
     """Wspólna ścieżka dla /refresh, /rebuild i /add/topic — synchronicznie."""
     if step == "build":
-        code, log = run_script([sys.executable, "extract_tools.py"], timeout=1800)
+        code, log = run_script("extract_tools.py", timeout=1800)
     elif step == "backfill":
         code, log = run_script(
-            [sys.executable, "-c",
-             "from core import backfill; backfill.clean_index(); backfill.backfill()"],
+            "-c",
+            extra_args=["from core import backfill; backfill.clean_index(); backfill.backfill()"],
             timeout=1800,
         )
     elif step == "enrich":
         code, log = run_script(
-            [sys.executable, "core/enrich.py", "--limit", str(limit)], timeout=7200
+            "core/enrich.py", extra_args=["--limit", str(limit)], timeout=7200
         )
     elif step == "download":
         safe_topic = (topic or "").strip().lower()
@@ -579,7 +565,10 @@ def run_step(step, topic="awesome-list", limit=20000):
             flash("Nieprawidłowy topic (dozwolone: a-z, 0-9, myślnik).", "error")
             return redirect(url_for("refresh_page"))
         code, log = run_script(
-            [sys.executable, "fetch_topic.py", safe_topic, "100", "1", "20"], timeout=7200
+            "fetch_topic.py",
+            extra_args=["--topic-from-env", "100", "1", "20"],
+            timeout=7200,
+            env={"AWESOME_DOWNLOAD_TOPIC": safe_topic},
         )
     else:
         flash("Nieznany krok", "error")
@@ -598,17 +587,25 @@ def run_step(step, topic="awesome-list", limit=20000):
     )
 
 
-def run_script(args, timeout=None):
-    """Odpala składnię i zwraca (kod wyjścia, końcówkę logu)."""
-    if not isinstance(args, (list, tuple)) or not all(isinstance(a, str) for a in args):
-        raise ValueError("run_script args must be a list/tuple of strings")
-    for a in args:
-        if "\n" in a or "\r" in a or "\x00" in a:
-            raise ValueError("run_script argument contains control characters")
+def run_script(script, extra_args=None, timeout=None, env=None):
+    """Odpala skrypt Pythona i zwraca (kod wyjścia, końcówkę logu).
+    Wszystkie argumenty wiersza polecenia są hartkodowane — dane użytkownika
+    przekazywane są wyłącznie przez zmienną środowiskową (env), nigdy przez args."""
+    args = [sys.executable, script]
+    if extra_args:
+        for a in extra_args:
+            if not isinstance(a, str):
+                raise ValueError("extra_args must be strings")
+            if "\n" in a or "\r" in a or "\x00" in a or " " in a:
+                raise ValueError("extra_args contain unsafe characters")
+        args.extend(extra_args)
+    run_env = os.environ.copy()
+    if env:
+        run_env.update(env)
     try:
         result = subprocess.run(
             args, cwd=str(BASE_DIR), capture_output=True, text=True,
-            timeout=timeout,
+            timeout=timeout, env=run_env,
         )
     except subprocess.TimeoutExpired:
         return 124, "Przekroczono limit czasu — przerwane."
