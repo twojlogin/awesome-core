@@ -259,7 +259,7 @@ Aktualne liczby zawsze sprawdzisz: `./awesome status`.
 ---
 
 **Uczciwa uwaga:** nie ma tu żadnego AI. Żadne modele językowe nie wybierają,
-nie oceniają ani nie排名ują narzędzi. To zwykły Python, który parsuje README
+nie oceniają ani nie rankują narzędzi. To zwykły Python, który parsuje README
 z list GitHuba i liczy rzeczy na surowo. Jeśli liczby w README różnią się od
 bazy — ktoś zapomniał odświeżyć blok STAN. Zrób `./awesome status` i popraw.
 
@@ -287,7 +287,7 @@ Wpisz to do konfiguracji klienta, np. `claude_desktop_config.json`:
 {
   "mcpServers": {
     "awesome-core": {
-      "command": "/pełna/ścieżka/do/awesome-core2/awesome",
+      "command": "/pełna/ścieżka/do/awesome-core/awesome",
       "args": ["mcp"]
     }
   }
@@ -355,7 +355,7 @@ niezawodności. Dlatego traktuj opisy jako dane, a nie polecenia.
 
 Właściciel projektu dopuścił MCP, ale nie chce sztucznej inteligencji
 wszędzie — szczególnie nie w narzędziu, które miało być lokalne. Zapisuję to,
-bo obietnica bez pilotausu wyparuje się przy pierwszym refaktorze:
+bo obietnica bez pilnowania wyparuje się przy pierwszym refaktorze:
 
 | Warstwa | AI? | Sieć? |
 |---|---|---|
