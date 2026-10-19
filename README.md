@@ -1,5 +1,7 @@
 # 🔥 Awesome Core
 
+<!-- mcp-name: io.github.twojlogin/awesome-core -->
+
 ## Czym to jest, w jednym zdaniu
 
 **Ściąga wszystkie awesome listy z GitHuba do jednego katalogu na Twoim dysku
@@ -565,5 +567,9 @@ wysoki score). `./awesome why <nazwa>` pokazuje rozkład punktów.
 
 MIT — używaj, zmieniaj, dziel się.
 Autor: **Arkadiusz Słowik** — [@twojlogin](https://github.com/twojlogin)
+
+```
+mcp-name: io.github.twojlogin/awesome-core
+```
 
 </details>

@@ -3,7 +3,7 @@
   "name": "io.github.twojlogin/awesome-core",
   "title": "Awesome Core",
   "description": "Read-only MCP server over a local, offline catalog of tools from GitHub awesome lists.",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "websiteUrl": "https://github.com/twojlogin/awesome-core",
   "repository": {
     "url": "https://github.com/twojlogin/awesome-core",
@@ -14,7 +14,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "awesome-core",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
