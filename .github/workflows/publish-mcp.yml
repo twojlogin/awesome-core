@@ -5,9 +5,14 @@ on:
     types: [published]
   workflow_dispatch:
 
+# Jawne minimum na poziomie workflow (CodeQL: "Workflow does not contain
+# permissions") - zapobiega temu samemu alertowi co w publish-pypi.yml.
+permissions:
+  contents: read
+
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       id-token: write
       contents: read

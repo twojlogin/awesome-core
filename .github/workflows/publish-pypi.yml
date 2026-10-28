@@ -5,9 +5,14 @@ on:
     types: [published]
   workflow_dispatch:
 
+# Jawne minimum na poziomie workflow (CodeQL: "Workflow does not contain
+# permissions"). Bez tego GITHUB_TOKEN dostawalby domyslne uprawnienia orga.
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -27,10 +32,12 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: pypi
     permissions:
-      id-token: write
+      contents: read
+      actions: read    # download-artifact@v4 czyta artefakty przez API
+      id-token: write  # trusted publishing do PyPI (OIDC)
     steps:
       - uses: actions/download-artifact@v4
         with:
