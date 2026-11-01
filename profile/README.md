@@ -1,4 +1,4 @@
-# Arek
+# Arek Słowik Torun 2026` 
 
 ### [awesome-core](https://github.com/twojlogin/awesome-core)
 
