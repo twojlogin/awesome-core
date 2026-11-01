@@ -9,23 +9,55 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+<<<<<<< Updated upstream
     runs-on: ubuntu-24.04
+=======
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+>>>>>>> Stashed changes
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
+<<<<<<< Updated upstream
       - name: Remove shipped database so docs test is skipped in CI
         run: rm -f data/awesome.db || true
       - name: Run tests
         run: python -m pytest -q
+=======
+
+      - name: Remove shipped database so docs test is skipped in CI
+        run: rm -f data/awesome.db || true
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Akcje przypięte do SHA
+        run: |
+          set -eu
+          if grep -rnE '^[[:space:]]*uses:[[:space:]]*[^#]+@(v[0-9]|main|master)([[:space:]]|$)' .github/workflows/*.yml; then
+            echo "Akcja używa ruchomego tagu — przypnij do SHA." >&2
+            exit 1
+          fi
+>>>>>>> Stashed changes

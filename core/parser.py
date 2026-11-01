@@ -97,10 +97,63 @@ def _first_link(text):
     return name, url, desc
 
 
-def _clean_description(text):
-    desc = _strip_markdown(text)
-    desc = re.sub(r"^[-–—:•*]+\s*", "", desc)
-    desc = re.sub(r"^[\[(][^\])]*[\])]\s*", "", desc)
+# Wyrażenia regularne do czyszczenia opisów – wzorce śmieci z PDF-ów,
+# nagłówków konferencji i surowego kodu, przy czym pozostawiamy Unicode
+# (chiński, japoński, rosyjski itd.) jako prawidłowy opis.
+
+CONF_HEADER_RE = re.compile(
+    r"^\[(?:ICLR|ICCV|CVPR|NeurIPS|ArXiv|arXiv|IEEE)[^\]]*\]\s*",
+    re.IGNORECASE,
+)
+
+CODE_LIKE_RE = re.compile(
+    r"^\s*(?:import\s+|from\s+|SELECT\s+|INSERT\s+|UPDATE\s+|DELETE\s+)",
+    re.MULTILINE,
+)
+
+# Znaki/sekcje które zawsze usuwamy na początku (nie dotyczą treści)
+JUNK_PREFIX_RE = re.compile(r"^[-–—:•* ]")
+
+
+def _clean_description(text: str) -> str:
+    """Czyści opis z szumów: nagłówków konferencji, markerów, kodu.
+
+    **Co usuwamy:**
+    • Nagłówki na początku typu "[ICLR 2020]", "[ArXiv:2101.12345]", "[IEEE ...]"
+    • Linie startujące od markerów: "-", "*", ":", "•"
+    • To co wygląda jak surowy kod na początku (import, SELECT itd.)
+
+    **Co zostawiamy:**
+    • Cały resztę – w tym Unicode (chiński, japoński, kisielski itp.).
+      Nie bannujemy języków, tylko konkretne złe wzorce.
+    """
+    if not text:
+        return ""
+
+    desc = text.strip()
+
+    # 1. Usuwamy konferencyjne nagłówki na początku: [ICLR ...], [ArXiv ...], [IEEE ...]
+    desc = CONF_HEADER_RE.sub("", desc)
+
+    # 2. Usuwamy ogólne prefixy znaków: -, *, itp. na początku
+    desc = JUNK_PREFIX_RE.sub("", desc)
+
+    # 3. Usuwamy surowy kod na początku opisów – ale tylko jeśli całość
+    #    wygląda na fragment kodu, a nie zwykły tekst zawierający słowo "import".
+    #    Używamy prostego heurystyki: jeśli po usunięciu prefixu zostaje
+    #    coś w stylu "import X" na samej początku – odcinać.
+    desc = CODE_LIKE_RE.sub("", desc)
+
+    # 4. Ostatecznie usuwamy ewentualne puste pozostałości i skracamy
+    desc = re.sub(r"^\s+", "", desc)
+    desc = re.sub(r"\s{2,}", " ", desc).strip()
+
+    # Jeśli po czyszczeniu zostało pusto – zwracamy pusty string
+    if not desc:
+        return ""
+
+    # 5. Ograniczenie długości słów (istniejąca funkcja z langmap),
+    #    ale bez usuwania Unicode
     return langmap.truncate_words(desc)
 
 
