@@ -5,22 +5,13 @@ on:
     types: [published]
   workflow_dispatch:
 
-<<<<<<< Updated upstream
-# Jawne minimum na poziomie workflow (CodeQL: "Workflow does not contain
-# permissions") - zapobiega temu samemu alertowi co w publish-pypi.yml.
-=======
->>>>>>> Stashed changes
 permissions:
   contents: read
 
 jobs:
   publish:
-<<<<<<< Updated upstream
-    runs-on: ubuntu-24.04
-=======
     runs-on: ubuntu-latest
     timeout-minutes: 10
->>>>>>> Stashed changes
     permissions:
       id-token: write
       contents: read

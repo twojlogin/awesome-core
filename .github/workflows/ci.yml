@@ -15,12 +15,8 @@ concurrency:
 
 jobs:
   test:
-<<<<<<< Updated upstream
-    runs-on: ubuntu-24.04
-=======
     runs-on: ubuntu-latest
     timeout-minutes: 15
->>>>>>> Stashed changes
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
@@ -40,24 +36,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
-<<<<<<< Updated upstream
       - name: Remove shipped database so docs test is skipped in CI
         run: rm -f data/awesome.db || true
       - name: Run tests
         run: python -m pytest -q
-=======
-
-      - name: Remove shipped database so docs test is skipped in CI
-        run: rm -f data/awesome.db || true
-
-      - name: Run tests
-        run: python -m pytest -q
-
-      - name: Akcje przypięte do SHA
-        run: |
-          set -eu
-          if grep -rnE '^[[:space:]]*uses:[[:space:]]*[^#]+@(v[0-9]|main|master)([[:space:]]|$)' .github/workflows/*.yml; then
-            echo "Akcja używa ruchomego tagu — przypnij do SHA." >&2
-            exit 1
-          fi
->>>>>>> Stashed changes
