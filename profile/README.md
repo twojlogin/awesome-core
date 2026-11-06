@@ -4,3 +4,5 @@
 
 Katalog awesome list z GitHuba z wyszukiwaniem i sortowaniem według jawnych
 kryteriów.
+ jebac githbua i programistow ktorzy kurwa dla niego pracuja ! kurwa
+ 
