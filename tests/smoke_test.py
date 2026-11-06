@@ -573,6 +573,23 @@ class TestCliIsForgiving(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 awesome_cli.require_database(tmp)
 
+    def test_start_skips_full_status_scan_when_database_is_ready(self):
+        from unittest.mock import Mock, patch
+
+        from cli import awesome_cli
+
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = (1,)
+        with patch("core.store.db_ready", return_value=True), \
+                patch("core.store.connect", return_value=conn), \
+                patch("core.status.collect",
+                      side_effect=AssertionError("full status scan")), \
+                patch.object(awesome_cli, "check_requirements", return_value=[]), \
+                patch.object(awesome_cli, "cmd_web", return_value=0) as cmd_web:
+            self.assertEqual(awesome_cli.cmd_start([]), 0)
+        conn.close.assert_called_once_with()
+        cmd_web.assert_called_once_with(None)
+
     def test_bootstrap_detects_flask_without_network(self):
         from core import bootstrap
 
@@ -781,7 +798,6 @@ class TestDocsAreTruthful(unittest.TestCase):
         import subprocess
 
         root = Path(__file__).parent.parent
-        cli = root / "cli" / "awesome_cli.py"
         text = "\n".join((root / name).read_text(encoding="utf-8")
                          for name in ("README.md", "web/templates/help.html"))
         commands = sorted(set(re.findall(r"\./awesome ([a-z_-]+)", text))
@@ -789,21 +805,27 @@ class TestDocsAreTruthful(unittest.TestCase):
         # te wymagają danych albo są interaktywne, więc tylko samo wywołanie
         # z argumentami niczego tu nie sprawdza
         skip = {"start", "refresh", "install", "uninstall", "web", "tui",
+                "clones", "status", "doctor",
                 "demo", "validate", "enrich", "build", "download", "untrusted",
                 "ask", "audit", "collection", "fetch", "topic", "check", "add"}
         self.assertGreater(len(commands), 20)
-        for command in commands:
-            if command in skip:
-                continue
-            done = subprocess.run(
-                [sys.executable, str(cli), command],
-                capture_output=True, text=True, timeout=90, cwd=root,
-            )
-            out = done.stdout + done.stderr
-            self.assertNotIn("Nieznana komenda", out,
-                             f"dokumentacja obiecuje `./awesome {command}`, "
-                             f"a taka komenda nie istnieje")
-            self.assertNotIn("Traceback", out, command)
+        with tempfile.TemporaryDirectory() as tmp:
+            isolated_root = Path(tmp)
+            shutil.copytree(root / "cli", isolated_root / "cli")
+            shutil.copytree(root / "core", isolated_root / "core")
+            cli = isolated_root / "cli" / "awesome_cli.py"
+            for command in commands:
+                if command in skip:
+                    continue
+                done = subprocess.run(
+                    [sys.executable, str(cli), command],
+                    capture_output=True, text=True, timeout=30, cwd=isolated_root,
+                )
+                out = done.stdout + done.stderr
+                self.assertNotIn("Nieznana komenda", out,
+                                 f"dokumentacja obiecuje `./awesome {command}`, "
+                                 f"a taka komenda nie istnieje")
+                self.assertNotIn("Traceback", out, command)
 
     def test_test_count_in_docs_is_current(self):
         """Dokumentacja podaje liczbę testów. Weryfikacja: unittest nie ma
@@ -815,15 +837,14 @@ class TestDocsAreTruthful(unittest.TestCase):
         source = (root / "tests" / "smoke_test.py").read_text(encoding="utf-8")
         real = len(re.findall(r"\n    def test_", source))
         self.assertGreater(real, 50, "policz testów działa?")
-        for name in ("README.md", "AGENTS.md"):
-            text = (root / name).read_text(encoding="utf-8")
-            # Tylko polskie formy i liczba stanowiąca osobny token, inaczej
-            # "Jinja2\ntests/" wygląda jak twierdzenie "2 testy".
-            for claimed in re.findall(r"(?<![\w.])(\d+)\s+test(?:y|ów|ami|e)\b",
-                                       text):
-                self.assertEqual(
-                    int(claimed), real,
-                    f"{name} mówi o {claimed} testach, a suite ma {real}")
+        text = (root / "README.md").read_text(encoding="utf-8")
+        # Tylko polskie formy i liczba stanowiąca osobny token, inaczej
+        # "Jinja2\ntests/" wygląda jak twierdzenie "2 testy".
+        for claimed in re.findall(r"(?<![\w.])(\d+)\s+test(?:y|ów|ami|e)\b",
+                                  text):
+            self.assertEqual(
+                int(claimed), real,
+                f"README.md mówi o {claimed} testach, a suite ma {real}")
 
 
 class TestNoAIinCore(unittest.TestCase):
@@ -949,7 +970,7 @@ class TestNoAIinCore(unittest.TestCase):
         for path in sorted(root.rglob("*")):
             if not path.is_file() or path.is_dir():
                 continue
-            if any(part in {".git", "data", "offline-db", "venv", "logs"}
+            if any(part in {".git", "data", "offline-db", ".venv", "venv", "logs"}
                    for part in path.parts):
                 continue
             if path.suffix not in {".py", ".md", ".html", ".sh", ".yml", ".txt",

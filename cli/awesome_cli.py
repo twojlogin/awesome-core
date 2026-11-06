@@ -677,6 +677,7 @@ def cmd_clones(tools_db, args):
 def cmd_status():
     from core import status as status_mod
 
+    print("Odczytuję stan lokalnej bazy...", flush=True)
     for line in status_mod.render(status_mod.collect(BASE_DIR / "data")):
         print(line)
 
@@ -742,9 +743,20 @@ def cmd_start(args):
     """Pierwsze uruchomienie: wszystko po kolei, po ludzku."""
     from core import status as status_mod
 
-    state = status_mod.collect(BASE_DIR / "data")
-    readmes = state.get("readmes", 0) if state.get("ready") else 0
-    gotowe = bool(state.get("ready") and state.get("tools"))
+    from core import store
+
+    data_dir = BASE_DIR / "data"
+    print("Sprawdzam lokalną bazę...", flush=True)
+    gotowe = False
+    readmes = 0
+    if store.db_ready(data_dir):
+        conn = store.connect(data_dir, read_only=True)
+        try:
+            gotowe = conn.execute("SELECT 1 FROM tools LIMIT 1").fetchone() is not None
+        finally:
+            conn.close()
+        if gotowe:
+            readmes = sum(1 for _ in README_DIR.glob("*.md"))
 
     print("=" * 66)
     print(" Awesome Core" if gotowe else " Awesome Core — pierwsze uruchomienie")
@@ -766,8 +778,7 @@ def cmd_start(args):
     # a nie przebudowywać katalog przy każdym kliknięciu. Odświeżanie to
     # osobna komenda: ./awesome refresh.
     if gotowe and "--full" not in args and "--rebuild" not in args:
-        print(f"\nBaza już gotowa — {state['tools']:,} narzędzi z "
-              f"{state.get('lists', 0)} list. Pomijam pobieranie i build.")
+        print("\nBaza już gotowa. Pomijam pobieranie i build.")
         print("Odświeżyć dane: ./awesome download && ./awesome build")
 
     steps = list(START_STEPS) if not gotowe or "--rebuild" in args else []
