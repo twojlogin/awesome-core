@@ -27,26 +27,28 @@ def collect(data_dir=None):
 
     conn = store.connect(data_dir, read_only=True)
     row = conn.execute(
-        "SELECT COUNT(*) tools, COUNT(DISTINCT source_repo) lists FROM tools"
+        "SELECT COUNT(*) tools, COUNT(DISTINCT source_repo) lists, "
+        "COALESCE(SUM(tool_stars=0), 0) tools_no_meta, "
+        "COALESCE(SUM(tool_stars=0 AND url_norm LIKE 'github.com/%'), 0) "
+        "github_no_meta, COALESCE(SUM(alive=1), 0) alive, "
+        "COALESCE(SUM(alive=0), 0) dead FROM tools"
     ).fetchone()
     mentions = conn.execute("SELECT COUNT(*) FROM tool_mentions").fetchone()[0]
-    lists_total = conn.execute("SELECT COUNT(*) FROM repos").fetchone()[0]
-    lists_no_meta = conn.execute(
-        "SELECT COUNT(*) FROM repos WHERE stars=0 AND language=''"
-    ).fetchone()[0]
-    tools_no_meta = conn.execute(
-        "SELECT COUNT(*) FROM tools WHERE tool_stars=0"
-    ).fetchone()[0]
-    github_no_meta = conn.execute(
-        "SELECT COUNT(*) FROM tools WHERE tool_stars=0 AND url_norm LIKE 'github.com/%'"
-    ).fetchone()[0]
+    repo_stats = conn.execute(
+        "SELECT COUNT(*) lists_total, "
+        "COALESCE(SUM(stars=0 AND language=''), 0) lists_no_meta FROM repos"
+    ).fetchone()
+    lists_total = repo_stats["lists_total"]
+    lists_no_meta = repo_stats["lists_no_meta"]
+    tools_no_meta = row["tools_no_meta"]
+    github_no_meta = row["github_no_meta"]
     nongithub_links = tools_no_meta - github_no_meta
     # Ile faktycznie jest do zrobienia — nie "narzędzi", tylko repozytoriów:
     # kilka narzędzi często wskazuje na to samo repo, a 404 już odpytaliśmy.
-    repos_to_fetch = len(missing_repos(conn))
-    alive = conn.execute("SELECT COUNT(*) FROM tools WHERE alive=1").fetchone()[0]
-    dead = conn.execute("SELECT COUNT(*) FROM tools WHERE alive=0").fetchone()[0]
+    repos_to_fetch = len(missing_repos(conn, priority=False))
     repo_meta = conn.execute("SELECT COUNT(*) FROM tool_repo_meta").fetchone()[0]
+    alive = row["alive"]
+    dead = row["dead"]
     readmes = 0
     readme_dir = BASE_DIR / "offline-db" / "data" / "readmes"
     if readme_dir.exists():

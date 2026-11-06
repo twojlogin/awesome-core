@@ -53,7 +53,7 @@ def run(base_dir=None, network=True):
             repos = conn.execute("SELECT COUNT(*) FROM repos").fetchone()[0]
             from core.enrich import missing_repos
 
-            todo = len(missing_repos(conn))
+            todo = len(missing_repos(conn, priority=False))
             conn.close()
             if tools == 0:
                 points.append(_check(FAIL, "Baza", "pusta — 0 narzędzi",
