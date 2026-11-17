@@ -7,6 +7,8 @@
 
 <!-- mcp-name: io.github.twojlogin/awesome-core -->
 
+Polski · **[English](README.en.md)**
+
 ## Czym to jest, w jednym zdaniu
 
 **Ściąga wszystkie awesome listy z GitHuba do jednego katalogu na Twoim dysku
@@ -556,7 +558,7 @@ cli/awesome_cli.py   # CLI
 cli/tui.py           # TUI (curses)
 web/app.py           # Flask UI
 web/templates/       # szablony Jinja2
-tests/smoke_test.py  # 107 testów (CI)
+tests/smoke_test.py  # testy regresji (CI)
 ```
 
 </details>
