@@ -191,13 +191,13 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
             f"({summary['same_owner']} w ręku tego samego autora)",
         )
 
-    started_quality = time.perf_counter()
-    repo_quality = _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried)
-    _log(verbose, f"  jakość list: {time.perf_counter() - started_quality:.1f}s")
-
     tool_meta = store.tool_meta_map(conn)
     if tool_meta:
         _log(verbose, f"  metadane narzędzi w bazie: {len(tool_meta)} repozytoriów")
+
+    started_quality = time.perf_counter()
+    repo_quality = _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried, tool_meta, clone_of)
+    _log(verbose, f"  jakość list: {time.perf_counter() - started_quality:.1f}s")
     phase = time.perf_counter()
     rows, mention_rows = _build_tool_rows(
         best, all_mentions, repos, repo_quality, carried, tool_meta, clone_of, verbose
@@ -268,7 +268,7 @@ def _detect_clones(all_mentions, repos, threshold=None, min_shared=None, min_siz
     return rows, clones_mod.clone_map(rows)
 
 
-def _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried):
+def _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried, tool_meta=None, clone_of=None):
     project_hits = defaultdict(lambda: [0, 0])
     for identity, mention in best.items():
         host = identity.split("/", 1)[0]
@@ -288,15 +288,39 @@ def _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried):
             if alive:
                 alive_by_repo[mention["repo"]][1] += 1
 
+    # mediana gwiazdek narzędzi na liście (sygnał zaufania/kuracji)
+    tool_stars_by_repo = defaultdict(list)
+    if tool_meta:
+        for identity, mentions in all_mentions.items():
+            meta = _tool_meta_for(identity, tool_meta)
+            if not meta:
+                continue
+            stars = int(meta.get("stars", 0) or 0)
+            for mention in mentions:
+                tool_stars_by_repo[mention["repo"]].append(stars)
+
+    clone_of = clone_of or {}
+    clone_rows = []
+    # informacje o klonach/same-owner potrzebne do trust; pobierzemy z DB po zapisie? tutaj użyjemy clone_of mapy
+    # same_owner_clone wyliczymy prosto gdy kanon znany
     quality = {}
     for full_name, repo in repos.items():
         stats = dict(stats_by_repo.get(full_name) or {"total": 0})
         stats["pushed_at"] = repo.get("pushed_at")
+        stats["list_stars"] = int(repo.get("stars", 0) or 0)
         checked, ok = alive_by_repo.get(full_name, [0, 0])
         stats["alive_checked"] = checked
         stats["alive_ok"] = ok
         seen, projects = project_hits.get(full_name, [0, 0])
         stats["projects"] = (projects / seen) if seen else None
+        values = sorted(tool_stars_by_repo.get(full_name, []))
+        if values:
+            mid = len(values) // 2
+            stats["median_tool_stars"] = values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) // 2
+        canonical = clone_of.get(full_name)
+        stats["is_clone"] = bool(canonical)
+        if canonical:
+            stats["same_owner_clone"] = canonical.split("/", 1)[0].lower() == full_name.split("/", 1)[0].lower()
         quality[full_name] = scoring.repo_quality(stats)["quality"]
     return quality
 

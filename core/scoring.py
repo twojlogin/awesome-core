@@ -21,12 +21,13 @@ WEIGHTS_TOOL = {
 
 
 WEIGHTS_LIST = {
-    "desc": 0.26,
-    "alive": 0.18,
-    "unique": 0.18,
-    "projects": 0.16,
+    "desc": 0.22,
+    "alive": 0.26,
+    "unique": 0.14,
+    "projects": 0.10,
     "fresh": 0.12,
-    "size": 0.10,
+    "size": 0.08,
+    "trust": 0.08,
 }
 
 
@@ -78,12 +79,22 @@ def freshness(pushed_at, now=None):
 
 
 def size_factor(count):
-    """Nasycenie: małe listy są mniej wiarygodne, duże nie rosną w nieskończoność."""
+    """Kuratorski rozmiar: małe listy słabe, optymalnie ~50-800, megadumpy karane."""
+    count = max(0, int(count or 0))
     if count <= 0:
         return 0.0
     if count < 30:
         return round(0.15 * count / 30, 4)
-    return round(min(1.0, math.log10(count) / math.log10(1000)), 4)
+    if count <= 800:
+        # rośnie do ~1.0 w okolicach sensownej listy kuratorskiej
+        return round(0.15 + 0.85 * min(1.0, math.log10(count) / math.log10(800)), 4)
+    if count <= 1500:
+        return 1.0
+    if count <= 3000:
+        # łagodny spadek dla dużych zrzutów
+        return round(1.0 - 0.20 * (count - 1500) / 1500, 4)
+    # powyżej 3000: wyraźna kara, ale nie zero (mogą być wartościowe katalogi)
+    return round(max(0.35, 0.80 - 0.20 * math.log10(count / 3000)), 4)
 
 
 def star_factor(stars):
@@ -91,6 +102,24 @@ def star_factor(stars):
     if stars <= 0:
         return 0.0
     return round(min(1.0, math.log10(1 + stars) / 6.0), 4)
+
+
+def list_trust(list_stars, median_tool_stars=None, is_clone=False, same_owner_clone=False):
+    """Sygnał wiarygodności samej listy (nie wyrok)."""
+    stars = max(0, int(list_stars or 0))
+    stars_part = min(1.0, math.log10(1 + stars) / math.log10(500)) if stars > 0 else 0.0
+    if median_tool_stars is None:
+        median_part = 0.5
+    else:
+        m = max(0, int(median_tool_stars or 0))
+        median_part = min(1.0, math.log10(1 + m) / math.log10(300)) if m > 0 else 0.0
+    trust = 0.65 * stars_part + 0.35 * median_part
+    if is_clone:
+        trust *= 0.35 if same_owner_clone else 0.55
+    # lista bez gwiazdek, ale z treścią nie dostaje zera automatycznie
+    if stars == 0 and median_tool_stars is None:
+        trust = min(trust, 0.35)
+    return round(max(0.0, min(1.0, trust)), 4)
 
 
 def consensus(list_count, owners_count, quality_sum):
@@ -106,7 +135,11 @@ def consensus(list_count, owners_count, quality_sum):
         CONSENSUS_PER_LIST * list_count
         + CONSENSUS_PER_OWNER * max(0, owners_count - 1)
     )
-    return round(min(1.0, raw) * (0.55 + 0.45 * avg_quality), 4)
+    # niska średnia jakość list obniża zgodę mocniej (farmy/dumpy nie budują zaufania)
+    quality_factor = 0.35 + 0.65 * avg_quality
+    if avg_quality < 0.45:
+        quality_factor *= 0.6 + 0.9 * (avg_quality / 0.45)
+    return round(min(1.0, raw) * quality_factor, 4)
 
 
 def repo_quality(stats, now=None):
@@ -121,14 +154,26 @@ def repo_quality(stats, now=None):
     projects_ratio = 0.6 if projects is None else max(0.0, min(1.0, float(projects)))
 
     denom = max(1, total)
+    desc_ratio = with_desc / denom
+    unique_ratio = 1.0 - min(1.0, duplicates / denom) if total else 0.0
+    alive_ratio = (alive_ok / alive_checked) if alive_checked else None
+    junk_ratio = junk / denom
+
     parts = {
-        "desc": round(with_desc / denom, 4),
-        "unique": round(1.0 - min(1.0, duplicates / denom), 4) if total else 0.0,
-        "alive": round(alive_ok / alive_checked, 4) if alive_checked else None,
+        "desc": round(desc_ratio, 4),
+        "unique": round(unique_ratio, 4),
+        "alive": round(alive_ratio, 4) if alive_ratio is not None else None,
         "projects": round(projects_ratio, 4) if total else 0.0,
         "fresh": freshness(stats.get("pushed_at"), now),
         "size": size_factor(total),
+        "trust": list_trust(
+            stats.get("list_stars", 0),
+            stats.get("median_tool_stars"),
+            is_clone=bool(stats.get("is_clone")),
+            same_owner_clone=bool(stats.get("same_owner_clone")),
+        ),
     }
+
     quality = 0.0
     weight_sum = 0.0
     for key, weight in WEIGHTS_LIST.items():
@@ -137,8 +182,32 @@ def repo_quality(stats, now=None):
             continue
         quality += weight * value
         weight_sum += weight
-    parts["junk"] = round(junk / denom, 4)
-    parts["quality"] = round(min(1.0, quality / weight_sum), 4) if weight_sum else 0.0
+    quality = (quality / weight_sum) if weight_sum else 0.0
+
+    # silna kara za martwe linki, gdy wiemy wystarczająco dużo
+    if alive_ratio is not None and alive_checked >= 10:
+        dead_ratio = 1.0 - alive_ratio
+        if dead_ratio > 0.05:
+            # >5% martwych: kara rośnie wykładniczo, przy 40%+ bardzo mocno
+            quality *= max(0.05, 1.0 - (dead_ratio / 0.6) ** 1.6)
+
+    # megadump z niską kuracją/jakością sygnałów = śmietnik, nie 1.00
+    if total >= 2000:
+        dump_penalty = 1.0
+        if desc_ratio < 0.7:
+            dump_penalty *= 0.75 + 0.25 * desc_ratio
+        if alive_ratio is not None and alive_ratio < 0.9:
+            dump_penalty *= 0.6 + 0.4 * alive_ratio
+        if projects_ratio < 0.5:
+            dump_penalty *= 0.8 + 0.2 * projects_ratio
+        quality *= dump_penalty
+
+    # dużo śmieci/junk w parsowaniu obniża zaufanie do listy
+    if junk_ratio > 0.15:
+        quality *= max(0.5, 1.0 - 0.8 * junk_ratio)
+
+    parts["junk"] = round(junk_ratio, 4)
+    parts["quality"] = round(max(0.0, min(1.0, quality)), 4)
     return parts
 
 

@@ -10,7 +10,9 @@ PIERWSZE URUCHOMIENIE (zacznij tutaj):
 
 Codziennie:
   awesome status                    — co jest w bazie i co warto odświeżyć
-  awesome refresh                   — pobierz nowe listy i przebuduj bazę (nic nie działa w tle)
+  awesome refresh                   — szybkie odświeżenie: download + build (bez automatu)
+      --full                        — dołóż backfill/enrich (cięższe, z limitem)
+      --enrich-limit N              — limit dla enrich w trybie pełnym (domyślnie 1000)
 
 Wyszukiwanie:
   awesome search <zapytanie>          — szukaj narzędzi offline
@@ -848,34 +850,53 @@ def cmd_start(args):
 
 
 def cmd_refresh(args):
-    """Jedna komenda zamiast tła: download -> backfill -> enrich -> build."""
+    """Odświeżanie na żądanie: domyślnie szybko (download + build), ciężkie kroki opcjonalnie."""
     steps = [a for a in args if not a.startswith("-")]
-    limit = _flag_int(args, "--enrich-limit", 40000)
+    limit = _flag_int(args, "--enrich-limit", 1000)
     dry_run = "--dry-run" in args
+    full = "--full" in args
+    quick = "--quick" in args or (not full and "enrich" not in steps and "backfill" not in steps)
     wanted = set(steps) & {"download", "backfill", "enrich", "build"}
-    plan = {}
-    for name in ("download", "backfill", "enrich", "build"):
-        plan[name] = (name in wanted) or (not wanted and f"--skip-{name}" not in args)
-    print("[*] Odświeżanie bazy — wszystko na żądanie, w tle nic nie działa.")
-    for name, enabled in plan.items():
-        print(f"    {name}: {'tak' if enabled else 'pomijam'}")
+
+    def enabled(name, heavy=False):
+        if f"--skip-{name}" in args:
+            return False
+        if name in wanted:
+            return True
+        if wanted:
+            return False
+        if quick and heavy:
+            return False
+        return True
+
+    plan = {
+        "download": enabled("download", heavy=False),
+        "backfill": enabled("backfill", heavy=True),
+        "enrich": enabled("enrich", heavy=True),
+        "build": enabled("build", heavy=False),
+    }
+    print("[*] Odświeżanie bazy — na żądanie, bez automatu w tle.")
+    if quick and not wanted and not full:
+        print("    tryb szybki: download + build (bez długiego backfill/enrich).")
+        print("    pełne odświeżenie: ./awesome refresh --full  (albo dopisz: backfill enrich)")
+    for name, on in plan.items():
+        print(f"    {name}: {'tak' if on else 'pomijam'}")
     if dry_run:
         print("\n(dry-run: nic nie uruchamiam)")
         return
-    want = plan
 
-    if want["download"]:
+    if plan["download"]:
         topic = steps[0] if steps and not steps[0].isdigit() else "awesome-list"
-        print(f"\n=== 1/4 pobieranie list (topic: {topic}) ===")
+        print(f"\n=== pobieranie list (topic: {topic}) ===")
         cmd_topic(topic)
-    if want["backfill"]:
-        print("\n=== 2/4 metadane list ===")
+    if plan["backfill"]:
+        print("\n=== metadane list ===")
         cmd_backfill()
-    if want["enrich"]:
-        print(f"\n=== 3/4 metadane narzędzi (limit {limit}) ===")
+    if plan["enrich"]:
+        print(f"\n=== metadane narzędzi (limit {limit}) ===")
         cmd_enrich(limit)
-    if want["build"]:
-        print("\n=== 4/4 przebudowa bazy ===")
+    if plan["build"]:
+        print("\n=== przebudowa bazy ===")
         cmd_build()
     print()
     cmd_status()
