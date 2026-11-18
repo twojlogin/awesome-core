@@ -422,44 +422,39 @@ Z tego wynika reszta decyzji:
 
 Katalog powstaje z **cudzych repozytoriów**. To znaczy, że ktoś może celowo
 wstawić fałszywą listę, która zbiera wejścia, a jej „narzędzia" prowadzą do
-podszywanych domen albo do szkodliwego kodu. **Czy to się zdarzyło?**
+podszywanych domen albo do szkodliwego kodu. Sprawdź aktualnie:
 
 ```bash
 ./awesome audit
 ```
 
-Stan na dziś (6 października 2026, 1 032 listy, 186 861 narzędzi): **7 list
-warte obejrzenia, 1 podejrzany link**. Zero potwierdzonych ataków.
+Wynik zależy od pobranych list i stanu lokalnej bazy (`./awesome status`).
+`audit` wypisuje sygnały heurystyczne do ręcznego sprawdzenia — nie werdykt.
 
-Co sygnał ma złapać:
+Co sygnał ma złapać (przykłady):
 
-| Sygnał | Dlaczego podejrzane |
+| Sygnał | Dlaczego warto sprawdzić |
 |---|---|
-| dużo narzędzi przy **0 gwiazdek** | twórca dopiero zaczął — nie ma reputacji do stracenia |
-| **jeden właściciel** dla wielu linków | to nie katalog, tylko linki do jednego projektu |
-| **autopromocja** (dużo linków do repo właściciela listy) | lista promuje głównie własne projekty, nie niezależny katalog |
-| dużo **martwych linków** | farma linków, nie treść |
-| niedawno utworzone repo + dużo narzędzi | kampania, nie dorobek |
-| **klon** innej listy | kopiowanie zamiast budowania |
-| link typu `github.com@evil.tld`, `githvb.com`, adres IP, punycode | podszywanie domeny |
-
-Przykładowe trafienie z naszej bazy: `laoma2053/awesome-zhuiju-free` — 25 narzędzi,
-**0 gwiazdek**, brak opisu, żaden link nie potwierdzony przez inną listę.
+| dużo narzędzi przy **0 gwiazdek** / niskiej reputacji | brak reputacji do stracenia, typowy wzorzec masowego dodawania linków |
+| mała różnorodność **zewnętrznych** linków GitHub (np. jeden właściciel/projekt) | może to nie być katalog, tylko zbiór linków wokół jednego źródła |
+| **autopromocja** (dużo linków do **innych** repo właściciela listy) | lista promuje głównie własne projekty; linki wewnątrz własnego repo listy traktowane są osobno (struktura monorepo) |
+| dużo **martwych linków** | farma linków lub porzucona lista |
+| **klon** innej listy | kopiowanie zamiast niezależnej kuracji |
+| link typu `github.com@evil.tld`, `githvb.com`, adres IP, punycode | możliwe podszywanie domeny |
+| etykiety pomocnicze (info), np. **star dump** lub **farma wielu list** tego samego właściciela | kontekst do ręcznego przeglądu (nie osobny dowód złośliwości) |
 
 Czego **nie** robimy i dlaczego warto to wiedzieć:
 
 - **To nie jest skaner złośliwego oprogramowania.** Nie rozpoznajemy droppera
   w repozytorium ani złośliwego kodu w kodzie narzędzia. Nie obiecujemy, że
   przepuścimy wszystko.
-- **Sygnały nie są wyrokiem.** Flag oznacza „obejrzyć ręcznie", nie „złośliwe".
-  Trzy z siedmiu trafień okazały się uczciwymi, choć dziwnymi listami.
-- **Ranking już się przed tym broni**: narzędzie potrzebuje zgody co najmniej
-  dwóch niezależnych list, a kopie list nie liczą się do tej zgody. Jedna
-  nowa fałszywa lista nie wypchnie niczego na szczyt.
-- **`awesome install` to tylko `git clone`.** Nie uruchamia skryptów, nie pyta
-  o hasło do Twojego GitHuba, nie wykonuje kodu zdalnego repozytorium. Ale
-  potem **to Ty** decydujesz, co z tym kodem zrobisz — i tego program nie
-  kontroluje.
+- **Sygnały nie są wyrokiem.** Oznaczają „warto obejrzeć ręcznie", nie „złośliwe".
+- **Ranking/build ograniczają wpływ pojedynczego źródła**: narzędzia zyskują na
+  zgodzie niezależnych list, kopie list nie liczą się jak osobne głosy, a
+  podejrzane farmy/masowi agregatorzy (`suspected_farms`) mogą mieć ograniczony
+  wpływ na konsensus/jakość.
+- **`awesome install` to tylko `git clone`.** Nie uruchamia skryptów ani kodu
+  zdalnego repozytorium. Ale potem **to Ty** decydujesz, co z tym kodem zrobisz.
 - **Opisy z obcych list trafiają do kontekstu modelu przez MCP**, więc są
   przepuszczane przez `core/untrusted.py` (patrz sekcja o bezpieczeństwie).
 
