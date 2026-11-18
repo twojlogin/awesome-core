@@ -1121,6 +1121,30 @@ class TestPoisoningDetection(unittest.TestCase):
                     "docs.python.org/3/library/sqlite3.html"):
             self.assertEqual(poisoning.url_risks(url), [], url)
 
+    def test_self_promotion_is_flagged(self):
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        name = "acme/awesome-acme"
+        conn.execute(
+            "INSERT OR REPLACE INTO repos (full_name, owner, name, url, stars,"
+            " description, unique_tool_count) VALUES (?,?,?,?,?,?,?)",
+            (name, "acme", "awesome-acme", f"https://github.com/{name}", 50, "", 20))
+        for i in range(20):
+            owner = "acme" if i < 12 else f"other{i}"
+            conn.execute(
+                "INSERT OR REPLACE INTO tools (name, name_norm, url, url_norm,"
+                " host, description, source_repo, alive, lists_count, score)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (f"tool{i}", f"tool{i}", f"https://github.com/{owner}/t{i}",
+                 f"github.com/{owner}/t{i}", "github.com", "x", name, 1, 1, 10))
+        conn.commit()
+        verdict = poisoning.assess_list(conn, name)
+        conn.close()
+        self.assertEqual(verdict["status"], "warto sprawdzić")
+        self.assertTrue(any("autopromocja" in w for w in verdict["attention"]),
+                        verdict["attention"])
+
 
 class TestUntrusted(unittest.TestCase):
     """Opisy z obcych repo to dane. Nie mogą stać się rozkazami dla modelu."""
