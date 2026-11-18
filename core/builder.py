@@ -327,6 +327,7 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
         repo_quality, owner_info = _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried)
         _log(verbose, f"  jakość list: {time.perf_counter() - started_quality:.1f}s")
 
+        repos_with_tools = {m["repo"] for ms in all_mentions.values() for m in ms}
         # rejestr farm SEO (suspected_farms) na podstawie wykrytych ownerów
         try:
             detected = set()
@@ -335,7 +336,8 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
                     detected.add(owner)
                     sample = ";".join(
                         [fn for fn, r in repos.items()
-                         if (r.get("owner") or fn.split("/")[0]).lower() == owner][:5]
+                         if fn in repos_with_tools
+                         and (r.get("owner") or fn.split("/")[0]).lower() == owner][:5]
                     )
                     store.upsert_suspected_farm(
                         conn, owner,
@@ -351,6 +353,23 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
                 for owner in prev_active - detected:
                     store.upsert_suspected_farm(conn, owner, repo_count=0, median_stars=0,
                                                 sample_repos="", status="vanished", commit=False)
+            except Exception:
+                pass
+            # usuń osierocone wpisy (brak właściciela w aktualnych repos)
+            try:
+                repo_owners = {
+                    (r.get("owner") or fn.split("/")[0]).lower()
+                    for fn, r in repos.items()
+                    if (r.get("owner") or ("/" in fn))
+                }
+                if repo_owners:
+                    placeholders = ",".join("?" for _ in repo_owners)
+                    conn.execute(
+                        f"DELETE FROM suspected_farms WHERE lower(owner) NOT IN ({placeholders})",
+                        tuple(repo_owners),
+                    )
+                else:
+                    conn.execute("DELETE FROM suspected_farms")
             except Exception:
                 pass
             conn.commit()
@@ -457,15 +476,19 @@ def _detect_clones(all_mentions, repos, threshold=None, min_shared=None, min_siz
     return rows, clones_mod.clone_map(rows)
 
 
-def _owner_farm_info(repos):
+def _owner_farm_info(repos, repos_with_tools=None):
     """Wykrywa farmy SEO i masowych agregatorów jednego autora.
 
     - farma niskogwiazdkowa: >=8 list i mediana gwiazdek <150
     - masowy agregator: bardzo wiele list od jednego ownera (np. uhub/awesome-*),
-      nawet przy wyższych gwiazdkach — obniżamy zaufanie i wpływ na consensus.
+      przy niskiej/średniej medianie gwiazdek — obniżamy zaufanie i wpływ na consensus.
+    Zliczane są tylko repozytoria, które w bieżącym buildzie mają narzędzia (tools > 0).
     """
+    allowed = repos_with_tools if repos_with_tools is not None else set(repos.keys())
     by_owner = defaultdict(list)
     for full_name, repo in repos.items():
+        if full_name not in allowed:
+            continue
         owner = (repo.get("owner") or (full_name.split("/")[0] if "/" in full_name else "")).lower()
         if not owner:
             continue
@@ -477,8 +500,9 @@ def _owner_farm_info(repos):
         mid = len(vals) // 2
         median = vals[mid] if len(vals) % 2 else (vals[mid - 1] + vals[mid]) / 2.0
         is_farm = count >= 8 and median < 150
-        # masowy agregator: dużo podobnych/automatycznych list od jednego autora
-        is_mass_aggregator = (count >= 15) or (count >= 10 and median < 250)
+        # masowy agregator: dużo podobnych list od jednego autora, ale nie przy
+        # wysokiej medianie gwiazdek (wtedy raczej seria wartościowych zasobów)
+        is_mass_aggregator = median < 150 and ((count >= 15) or (count >= 10 and median < 250))
         multiplier = 1.0
         if is_farm:
             multiplier = min(multiplier, 0.78)
@@ -516,7 +540,8 @@ def _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried):
             if alive:
                 alive_by_repo[mention["repo"]][1] += 1
 
-    owner_info = _owner_farm_info(repos)
+    repos_with_tools = {m["repo"] for ms in all_mentions.values() for m in ms}
+    owner_info = _owner_farm_info(repos, repos_with_tools=repos_with_tools)
 
     quality = {}
     for full_name, repo in repos.items():
