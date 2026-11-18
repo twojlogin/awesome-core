@@ -182,6 +182,8 @@ Jeśli masz mało czasu, krok 1 możesz pominąć i nadrobić później:
 ./awesome mentions nmap                            # w ilu listach jest to narzędzie
 ./awesome audit                                    # czy katalog nie jest zatruty fałszywymi listami
 ./awesome audit sindresorhus/awesome               # audyt jednego repozytorium
+./awesome leaks                                    # skan możliwych wycieków sekretów (lokalnie)
+./awesome leaks --readmes                          # skanuj też surowe pliki README (offline)
 ./awesome lists                                    # najlepsze listy
 ./awesome info nmap                                # dane + komenda instalacji
 ./awesome install nmap                             # zainstaluj (git clone)
@@ -377,6 +379,15 @@ narzędzia do obrony przed dokładnie tym problemem (`nvidia/skillspector`,
 Czego **nie** obiecuję: skaner łapie znane wzorce, nie jest dowodem
 niezawodności. Dlatego traktuj opisy jako dane, a nie polecenia.
 
+Możesz też lokalnie sprawdzić możliwe wycieki sekretów/tokenów w opisach i plikach README:
+
+```bash
+./awesome leaks
+./awesome leaks --readmes   # skanuj też surowe pliki README (offline)
+```
+
+To heurystyki (zamaskowane wyniki, bez zgłaszania/wysyłania czegokolwiek) — pomocne do świadomego przeglądu, nie gwarancja bezpieczeństwa.
+
 ---
 
 ## Zasada: rdzeń bez AI
@@ -425,6 +436,7 @@ Co sygnał ma złapać:
 |---|---|
 | dużo narzędzi przy **0 gwiazdek** | twórca dopiero zaczął — nie ma reputacji do stracenia |
 | **jeden właściciel** dla wielu linków | to nie katalog, tylko linki do jednego projektu |
+| **autopromocja** (dużo linków do repo właściciela listy) | lista promuje głównie własne projekty, nie niezależny katalog |
 | dużo **martwych linków** | farma linków, nie treść |
 | niedawno utworzone repo + dużo narzędzi | kampania, nie dorobek |
 | **klon** innej listy | kopiowanie zamiast budowania |
