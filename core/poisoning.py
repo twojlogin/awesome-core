@@ -127,6 +127,20 @@ def assess_list(conn, full_name):
     elif github_tools >= 40 and owners <= max(2, github_tools // 40):
         attention.append(f"tylko {owners} różnych właścicieli dla {github_tools} linków")
 
+    list_owner = full_name.split("/")[0].lower() if "/" in full_name else ""
+    self_count = 0
+    if github_tools >= 10 and list_owner:
+        self_count = conn.execute(
+            "SELECT COUNT(*) c FROM tools WHERE source_repo = ? "
+            "AND url_norm LIKE ?",
+            (full_name, f"github.com/{list_owner}/%"),
+        ).fetchone()["c"]
+        if self_count >= 10 and self_count / github_tools >= 0.5:
+            pct = round(self_count / github_tools * 100)
+            attention.append(
+                f"autopromocja: {self_count} z {github_tools} linków GitHub "
+                f"({pct}%) prowadzi do repozytoriów właściciela listy ({list_owner})")
+
     if checked >= 20 and dead / checked > 0.4:
         attention.append(f"{dead} z {checked} sprawdzonych linków nie żyje "
                          f"({dead / checked:.0%})")
