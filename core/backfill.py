@@ -8,9 +8,11 @@ i sortowanie po gwiazdkach nie miało o czym sortować.
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -143,30 +145,63 @@ def _to_meta(data):
     }
 
 
-def missing(conn, force=False):
+def missing(conn, force=False, only_missing=False):
+    """Listy do backfill.
+
+    force: wszystkie. Domyślnie: braki metadanych (stars=0 i brak language)
+    lub inne niekompletne pola istotne dla quality/trust/freshness.
+    only_missing=True: tryb lekki (jak domyślny) — alias dla czytelności
+    w quick refresh.
+    """
     if force:
-        return [
-            r["full_name"] for r in conn.execute(
-                "SELECT full_name FROM repos ORDER BY full_name"
-            )
-        ]
-    return [
-        r["full_name"]
-        for r in conn.execute(
-            "SELECT full_name FROM repos WHERE stars = 0 AND language = ''"
+        sql = "SELECT full_name FROM repos ORDER BY full_name"
+    else:
+        # brak podstawowych metadanych potrzebnych do quality/trust/freshness
+        sql = (
+            "SELECT full_name FROM repos WHERE "
+            "(stars = 0 OR language = '' OR language IS NULL OR "
+            " pushed_at = '' OR pushed_at IS NULL)"
             " ORDER BY full_name"
         )
-    ]
+    return [r["full_name"] for r in conn.execute(sql)]
 
 
-def backfill(limit=None, verbose=True, force=False):
+def _retry_days_backfill(status, fail_count):
+    if status == "error":
+        return 1 if fail_count <= 1 else 3
+    return 30 if fail_count >= 2 else 7
+
+
+def backfill(limit=None, verbose=True, force=False, only_missing=False):
+    """Uzupełnia metadane list. W trybie lekkim (only_missing/domyślnie)
+    bierze tylko braki i respektuje retry_after_at; pełny pod force/limit.
+    Zapis w większych transakcjach; Ctrl+C kończy bieżącą paczkę bezpiecznie.
+    """
     token = github_token()
     conn = store.connect()
-    full_names = missing(conn, force=force)
+    full_names = missing(conn, force=force, only_missing=only_missing)
     if limit:
         full_names = full_names[:limit]
+
+    # pomiń listy w oknie retry_after (chyba że force)
+    deferred = 0
+    if not force:
+        filtered = []
+        for fn in full_names:
+            try:
+                if store.list_fetch_deferred(conn, fn, kind="backfill"):
+                    deferred += 1
+                    continue
+            except Exception:
+                pass
+            filtered.append(fn)
+        full_names = filtered
+
     if not full_names:
-        print("Wszystkie listy mają metadane.")
+        msg = "Wszystkie listy mają metadane."
+        if deferred:
+            msg += f" Odroczonych (retry_after): {deferred}."
+        print(msg)
         conn.close()
         return 0
 
@@ -177,35 +212,109 @@ def backfill(limit=None, verbose=True, force=False):
         owner, name = full_name.split("/", 1)
         pairs.append((owner, name))
 
+    stop_requested = {"v": False}
+
+    def _on_sigint(signum, frame):
+        stop_requested["v"] = True
+        if verbose:
+            print("\n[!] Przerwanie: kończę bieżącą paczkę i zapisuję postęp...", flush=True)
+
+    prev_handler = None
+    try:
+        prev_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, _on_sigint)
+    except Exception:
+        prev_handler = None
+
     size = BATCH_SIZE if token else 1
     updated = 0
     total = len(pairs)
     started = time.perf_counter()
-    for i in range(0, total, size):
-        chunk = pairs[i:i + size]
-        ok, records = fetch(chunk, token)
-        if not ok:
-            print("Błąd API/rate limit — zatrzymuję, postęp zapisany.")
-            break
-        for key, data in records.items():
-            full_name = data.get("nameWithOwner") or key
-            if store.upsert_repo(conn, full_name, _to_meta(data)):
-                updated += 1
-        done = min(i + size, total)
-        conn.commit()
-        if verbose and (done % 200 < size or done == total):
-            rate = done / max(0.001, time.perf_counter() - started)
-            print(f"  {done}/{total} list, uzupełniono {updated} "
-                  f"({rate:.0f}/s, ETA {(total - done) / max(0.001, rate) / 60:.1f} min)",
-                  flush=True)
-        time.sleep(PAUSE)
+    commit_every_batches = max(1, (400 // max(1, size)))
+    batches_since_commit = 0
+    try:
+        for i in range(0, total, size):
+            if stop_requested["v"]:
+                break
+            chunk = pairs[i:i + size]
+            ok, records = fetch(chunk, token)
+            if not ok:
+                # błąd API/rate limit: nie oznaczaj wszystkich jako martwe, po prostu przerwij
+                print("Błąd API/rate limit — zatrzymuję, postęp zapisany.")
+                break
+            chunk_keys = {f"{o}/{n}".lower() for o, n in chunk}
+            found_keys = set()
+            for key, data in records.items():
+                full_name = data.get("nameWithOwner") or key
+                norm = full_name.lower()
+                found_keys.add(norm)
+                found_keys.add(key.lower())
+                if store.upsert_repo(conn, full_name, _to_meta(data)):
+                    updated += 1
+                try:
+                    store.clear_list_fetch_ok(conn, full_name, kind="backfill", commit=False)
+                except Exception:
+                    pass
+            # brak w odpowiedzi API (np. usunięte) — ustaw retry_after, nie próbuj w kółko
+            for o, n in chunk:
+                fn = f"{o}/{n}"
+                if fn.lower() not in found_keys:
+                    try:
+                        prev = conn.execute(
+                            "SELECT fail_count FROM list_fetch_state WHERE full_name=?",
+                            (fn,),
+                        ).fetchone()
+                        prev_fail = int(prev["fail_count"] or 0) if prev else 0
+                        store.bump_list_fetch_failure(
+                            conn, fn, kind="backfill", status="missing",
+                            reason="not_in_api_response",
+                            retry_days=_retry_days_backfill("missing", prev_fail + 1),
+                            commit=False,
+                        )
+                    except Exception:
+                        pass
+            batches_since_commit += 1
+            if batches_since_commit >= commit_every_batches or (i + size) >= total or stop_requested["v"]:
+                conn.commit()
+                batches_since_commit = 0
+            done = min(i + size, total)
+            if verbose and (done % 200 < size or done == total):
+                rate = done / max(0.001, time.perf_counter() - started)
+                print(f"  {done}/{total} list, uzupełniono {updated} "
+                      f"({rate:.0f}/s, ETA {(total - done) / max(0.001, rate) / 60:.1f} min)",
+                      flush=True)
+            if not stop_requested["v"]:
+                time.sleep(PAUSE)
+    finally:
+        try:
+            if batches_since_commit:
+                conn.commit()
+            still = len(missing(conn))
+            store.set_meta(conn, "last_backfill", time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime()), commit=False)
+            store.set_meta(conn, "last_backfill_updated", updated, commit=False)
+            store.set_meta(conn, "lists_without_meta", still, commit=False)
+            conn.commit()
+        except Exception:
+            try:
+                conn.commit()
+            except Exception:
+                pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+        if prev_handler is not None:
+            try:
+                signal.signal(signal.SIGINT, prev_handler)
+            except Exception:
+                pass
 
-    still = len(missing(conn))
-    store.set_meta(conn, "last_backfill", time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime()))
-    store.set_meta(conn, "last_backfill_updated", updated)
-    store.set_meta(conn, "lists_without_meta", still)
-    print(f"Uzupełniono {updated} list. Bez metadanych zostało: {still}.")
-    conn.close()
+    msg = f"Uzupełniono {updated} list. Bez metadanych zostało: {still}."
+    if deferred:
+        msg += f" Odroczonych (retry_after): {deferred}."
+    if stop_requested["v"]:
+        msg = "Przerwano bezpiecznie. " + msg
+    print(msg)
     return updated
 
 
@@ -253,9 +362,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Backfill awesome list metadata")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--force", action="store_true", help="odśwież wszystkie listy")
+    ap.add_argument("--only-missing", action="store_true",
+                    help="tylko listy z brakującymi metadanymi (lekki tryb)")
     ap.add_argument("--clean-only", action="store_true")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
     clean_index(verbose=not args.quiet)
     if not args.clean_only:
-        backfill(limit=args.limit, verbose=not args.quiet, force=args.force)
+        backfill(limit=args.limit, verbose=not args.quiet, force=args.force,
+                 only_missing=args.only_missing)

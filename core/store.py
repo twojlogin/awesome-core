@@ -18,7 +18,7 @@ DATA_DIR = BASE_DIR / "data"
 DB_FILE = "awesome.db"
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 SCHEMA = """
@@ -142,6 +142,18 @@ CREATE TABLE IF NOT EXISTS tool_repo_meta (
 );
 
 CREATE INDEX IF NOT EXISTS idx_toolmeta_lang ON tool_repo_meta(language);
+
+CREATE TABLE IF NOT EXISTS list_fetch_state (
+    full_name      TEXT PRIMARY KEY,
+    kind           TEXT NOT NULL DEFAULT 'list',
+    status         TEXT NOT NULL DEFAULT '',
+    fail_count     INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TEXT NOT NULL DEFAULT '',
+    retry_after_at TEXT NOT NULL DEFAULT '',
+    reason         TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_fetch_state_retry ON list_fetch_state(retry_after_at);
 """
 
 
@@ -441,14 +453,15 @@ def sanitize_index_entry(entry):
     return full_name, meta
 
 
-def set_meta(conn, key, value):
+def set_meta(conn, key, value, commit=True):
     """Zapisuje znacznik (np. kiedy ostatnio przebudowano bazę)."""
     conn.execute(
         "INSERT INTO meta (key, value) VALUES (?, ?)"
         " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (key, str(value)),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def get_meta(conn, key, default=""):
@@ -520,3 +533,88 @@ def export_csv(conn, out_path, limit=None):
         for row in rows:
             writer.writerow(dict(row))
     return len(rows)
+
+
+
+# --- list fetch/backfill state (retry_after) ---
+
+def _parse_ts(value):
+    if not value:
+        return None
+    text = str(value).strip().replace("Z", "+00:00")
+    try:
+        # allow "YYYY-MM-DD HH:MM:SSZ" style used elsewhere
+        if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}Z$", text):
+            text = text.replace(" ", "T").replace("Z", "+00:00")
+        dt = __import__('datetime').datetime.fromisoformat(text)
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=__import__('datetime').timezone.utc)
+    return dt.timestamp()
+
+
+def list_fetch_deferred(conn, full_name, kind='list', now=None):
+    row = conn.execute(
+        "SELECT retry_after_at, status, reason FROM list_fetch_state WHERE full_name=?",
+        (full_name,),
+    ).fetchone()
+    if not row:
+        return False
+    now_ts = now if now is not None else time.time()
+    retry_ts = _parse_ts(row["retry_after_at"])
+    if retry_ts is not None and retry_ts > now_ts:
+        return True
+    return False
+
+
+def set_list_fetch_state(conn, full_name, *, kind='list', status='', fail_count=None,
+                         retry_after_at='', reason='', commit=True):
+    now = _now()
+    if fail_count is None:
+        row = conn.execute(
+            "SELECT fail_count FROM list_fetch_state WHERE full_name=?", (full_name,)
+        ).fetchone()
+        fail_count = int(row["fail_count"] or 0) if row else 0
+    conn.execute(
+        "INSERT INTO list_fetch_state (full_name, kind, status, fail_count, last_attempt_at, retry_after_at, reason)"
+        " VALUES (?,?,?,?,?,?,?)"
+        " ON CONFLICT(full_name) DO UPDATE SET kind=excluded.kind, status=excluded.status,"
+        " fail_count=excluded.fail_count, last_attempt_at=excluded.last_attempt_at,"
+        " retry_after_at=excluded.retry_after_at, reason=excluded.reason",
+        (full_name, kind, status, int(fail_count), now, retry_after_at or '', reason or ''),
+    )
+    if commit:
+        conn.commit()
+
+
+def clear_list_fetch_ok(conn, full_name, kind='list', commit=True):
+    now = _now()
+    conn.execute(
+        "INSERT INTO list_fetch_state (full_name, kind, status, fail_count, last_attempt_at, retry_after_at, reason)"
+        " VALUES (?,?,?,?,?,?,?)"
+        " ON CONFLICT(full_name) DO UPDATE SET kind=excluded.kind, status='ok', fail_count=0,"
+        " last_attempt_at=excluded.last_attempt_at, retry_after_at='', reason=''",
+        (full_name, kind, 'ok', 0, now, '', ''),
+    )
+    if commit:
+        conn.commit()
+
+
+def bump_list_fetch_failure(conn, full_name, *, kind='list', status='error', reason='',
+                            retry_days=7, commit=True):
+    row = conn.execute(
+        "SELECT fail_count FROM list_fetch_state WHERE full_name=?", (full_name,)
+    ).fetchone()
+    prev = int(row["fail_count"] or 0) if row else 0
+    fails = prev + 1
+    # backoff: 7d, 30d for repeated permanent-ish failures
+    days = retry_days
+    if status in ('404', 'missing') and fails >= 2:
+        days = max(days, 30)
+    retry_at = __import__('datetime').datetime.now(__import__('datetime').timezone.utc) + __import__('datetime').timedelta(days=days)
+    retry_str = retry_at.strftime('%Y-%m-%dT%H:%M:%SZ')
+    set_list_fetch_state(conn, full_name, kind=kind, status=status, fail_count=fails,
+                         retry_after_at=retry_str, reason=reason, commit=commit)
+    return fails
+
