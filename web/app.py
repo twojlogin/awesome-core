@@ -627,7 +627,9 @@ def run_script(script, extra_args=None, timeout=None, env=None):
         for a in extra_args:
             if not isinstance(a, str):
                 raise ValueError("extra_args must be strings")
-            if "\n" in a or "\r" in a or "\x00" in a or " " in a:
+            # shell nie jest używany (lista argów), więc spacje są bezpieczne;
+            # blokujemy tylko znaki sterujące/łamanie linii.
+            if "\n" in a or "\r" in a or "\x00" in a:
                 raise ValueError("extra_args contain unsafe characters")
         args.extend(extra_args)
     run_env = os.environ.copy()
