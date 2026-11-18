@@ -207,20 +207,41 @@ def valid_pair(owner, name):
 def missing_repos(conn, limit=None, priority=True):
     """(owner, name) dla repozytoriów z tools, których nie ma w tool_repo_meta.
 
-    Domyślnie kolejność według score — najpierw metadane narzędzi, które
-    naprawdę coś znaczą (najczęściej cytowane, najwyżej ocenione).
+    Priorytet (domyślnie): najpierw repozytoria najczęściej cytowane na różnych
+    listach/wzmiankach — jawnie COALESCE(tools.lists_count, 0) DESC, z fallbackiem
+    score DESC, lists_count DESC, tool_stars DESC, url_norm ASC. Dzięki temu
+    limitowany enrich (np. 1000) wzbogaca najważniejsze narzędzia.
     """
     known = {
         row["full_name"].lower()
         for row in conn.execute("SELECT full_name FROM tool_repo_meta")
     }
-    order = "t.score DESC, t.lists_count DESC" if priority else "t.url_norm"
+    if priority:
+        # kanoniczne źródło liczby unikalnych list/wzmianek w tej bazie: tools.lists_count
+        order = (
+            "COALESCE(t.lists_count, 0) DESC, "
+            "COALESCE(t.score, 0) DESC, "
+            "COALESCE(t.lists_count, 0) DESC, "
+            "COALESCE(t.tool_stars, 0) DESC, "
+            "t.url_norm ASC"
+        )
+    else:
+        order = "t.url_norm ASC"
     out = []
     seen = set()
-    for row in conn.execute(
-        "SELECT DISTINCT url_norm FROM tools t WHERE t.url_norm LIKE 'github.com/%'"
-        f" ORDER BY {order}"
-    ):
+    try:
+        rows = conn.execute(
+            "SELECT t.url_norm, COALESCE(t.lists_count,0) AS lc, COALESCE(t.score,0) AS sc"
+            " FROM tools t WHERE t.url_norm LIKE 'github.com/%'"
+            f" ORDER BY {order}"
+        )
+    except Exception:
+        # odporność na brak kolumn/niestandardowy schemat
+        rows = conn.execute(
+            "SELECT DISTINCT url_norm FROM tools WHERE url_norm LIKE 'github.com/%'"
+            " ORDER BY url_norm"
+        )
+    for row in rows:
         identity = row["url_norm"]
         parts = [p for p in identity[len("github.com/"):].split("/") if p]
         if len(parts) < 2:
@@ -237,7 +258,7 @@ def missing_repos(conn, limit=None, priority=True):
     return out
 
 
-def save(conn, records):
+def save(conn, records, commit=True):
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     rows = []
     for full_name, meta in records.items():
@@ -262,7 +283,8 @@ def save(conn, records):
         " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         rows,
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return len(rows)
 
 
@@ -270,10 +292,14 @@ def enrich(limit=None, verbose=True, batch_size=BATCH_SIZE, pause=PAUSE,
            priority=True):
     """Metadane repozytoriów narzędzi. Wymaga zalogowania do GitHuba.
 
-    GraphQL bez tokena nie działa w ogóle, więc zamiast cicho zwracać zero
-    mówię wprost, czego brakuje i że ranking od tego nie zależy.
+    Priorytet kolejki (priority=True): najpierw repozytoria najczęściej
+    cytowane/występujące na listach (kanonicznie tools.lists_count DESC),
+    z fallbackiem score/tool_stars/url_norm — limitowany enrich trafia w
+    najważniejsze narzędzia. Zapis w większych transakcjach; Ctrl+C kończy
+    bieżącą paczkę, robi bezpieczny commit i zamyka się czysto.
     """
     import shutil
+    import signal
 
     if not shutil.which("gh"):
         if verbose:
@@ -298,8 +324,26 @@ def enrich(limit=None, verbose=True, batch_size=BATCH_SIZE, pause=PAUSE,
         conn.close()
         return 0
 
-    store.set_meta(conn, "enrich_started_at", time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime()))
-    store.set_meta(conn, "enrich_limit", limit or 0)
+    if verbose:
+        print(f"[*] Kolejka enrich: priorytet={'mentions/lists_count DESC' if priority else 'alfabetycznie'}")
+
+    stop_requested = {"v": False}
+
+    def _on_sigint(signum, frame):
+        stop_requested["v"] = True
+        if verbose:
+            print("\n[!] Przerwanie: kończę bieżącą paczkę i zapisuję postęp...", flush=True)
+
+    prev_handler = None
+    try:
+        prev_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, _on_sigint)
+    except Exception:
+        prev_handler = None
+
+    store.set_meta(conn, "enrich_started_at", time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime()), commit=False)
+    store.set_meta(conn, "enrich_limit", limit or 0, commit=False)
+    conn.commit()
     size = batch_size if token else 1
     total = len(pairs)
     done = 0
@@ -307,52 +351,92 @@ def enrich(limit=None, verbose=True, batch_size=BATCH_SIZE, pause=PAUSE,
     dead = 0
     failures = 0
     started = time.perf_counter()
-    for i in range(0, total, size):
-        chunk = pairs[i:i + size]
-        ok, records = fetch_batch(chunk, token)
-        if not ok:
-            failures += 1
-            if failures <= 3:
-                print(f"  Błąd API (próba {failures}/3) — pauza 20s i próbuję dalej.")
-                time.sleep(20)
-                continue
-            print("Błąd API 3× z rzędu — zatrzymuję (postęp zapisany).")
-            break
-        failures = 0
-        try:
-            found += save(conn, records)
-            for pair in chunk:
-                if f"{pair[0]}/{pair[1]}".lower() not in records:
-                    save(conn, dead_marker(*pair))
-                    dead += 1
-        except sqlite3.Error as exc:
-            print(f"Baza zablokowana ({exc.__class__.__name__}) — ponawiam za 10s.")
-            time.sleep(10)
+    commit_every_batches = max(1, (500 // max(1, size)))  # ~co 500 repo
+    batches_since_commit = 0
+    try:
+        for i in range(0, total, size):
+            if stop_requested["v"]:
+                break
+            chunk = pairs[i:i + size]
+            ok, records = fetch_batch(chunk, token)
+            if not ok:
+                failures += 1
+                if failures <= 3:
+                    print(f"  Błąd API (próba {failures}/3) — pauza 20s i próbuję dalej.")
+                    time.sleep(20)
+                    continue
+                print("Błąd API 3× z rzędu — zatrzymuję (postęp zapisany).")
+                break
+            failures = 0
             try:
-                conn.close()
-            except sqlite3.Error:
+                if records:
+                    found += save(conn, records, commit=False)
+                missing_in_batch = {}
+                for pair in chunk:
+                    key = f"{pair[0]}/{pair[1]}".lower()
+                    if key not in records:
+                        missing_in_batch[key] = dead_marker(*pair)
+                        dead += 1
+                if missing_in_batch:
+                    save(conn, missing_in_batch, commit=False)
+                batches_since_commit += 1
+                if batches_since_commit >= commit_every_batches or (i + size) >= total or stop_requested["v"]:
+                    conn.commit()
+                    batches_since_commit = 0
+            except sqlite3.Error as exc:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                print(f"Baza zablokowana ({exc.__class__.__name__}) — ponawiam za 10s.")
+                time.sleep(10)
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    pass
+                conn = store.connect()
+                continue
+            done += len(chunk)
+            if verbose and (done % 500 < size or done == total):
+                rate = done / max(0.001, time.perf_counter() - started)
+                eta = (total - done) / max(0.001, rate)
+                print(f"  {done}/{total} repo (żywych {found}, martwych {dead}) "
+                      f"{rate:.0f}/s, ETA {eta / 60:.1f} min", flush=True)
+            if not stop_requested["v"]:
+                time.sleep(pause)
+    finally:
+        try:
+            if batches_since_commit:
+                conn.commit()
+            store.set_meta(conn, "last_enrich", time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime()), commit=False)
+            store.set_meta(conn, "last_enrich_found", found, commit=False)
+            store.set_meta(conn, "last_enrich_dead", dead, commit=False)
+            github_left = conn.execute(
+                "SELECT COUNT(*) FROM tools WHERE tool_stars = 0 AND url_norm LIKE 'github.com/%'"
+            ).fetchone()[0]
+            store.set_meta(conn, "github_tools_without_own_meta", github_left, commit=False)
+            store.set_meta(conn, "repos_to_fetch", len(missing_repos(conn)), commit=False)
+            conn.commit()
+        except Exception:
+            try:
+                conn.commit()
+            except Exception:
                 pass
-            conn = store.connect()
-            continue
-        done += len(chunk)
-        if verbose and (done % 500 < size or done == total):
-            rate = done / max(0.001, time.perf_counter() - started)
-            eta = (total - done) / max(0.001, rate)
-            print(f"  {done}/{total} repo (żywych {found}, martwych {dead}) "
-                  f"{rate:.0f}/s, ETA {eta / 60:.1f} min", flush=True)
-        time.sleep(pause)
-
-    store.set_meta(conn, "last_enrich", time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime()))
-    store.set_meta(conn, "last_enrich_found", found)
-    store.set_meta(conn, "last_enrich_dead", dead)
-    github_left = conn.execute(
-        "SELECT COUNT(*) FROM tools WHERE tool_stars = 0 AND url_norm LIKE 'github.com/%'"
-    ).fetchone()[0]
-    store.set_meta(conn, "github_tools_without_own_meta", github_left)
-    store.set_meta(conn, "repos_to_fetch", len(missing_repos(conn)))
-    conn.close()
-    print(f"Zapisano metadane dla {found} repozytoriów narzędzi "
-          f"({dead} nie istnieje).")
+        try:
+            conn.close()
+        except Exception:
+            pass
+        if prev_handler is not None:
+            try:
+                signal.signal(signal.SIGINT, prev_handler)
+            except Exception:
+                pass
+    if stop_requested["v"]:
+        print(f"Przerwano bezpiecznie. Zapisano metadane dla {found} repozytoriów narzędzi "
+              f"({dead} nie istnieje).")
+    else:
+        print(f"Zapisano metadane dla {found} repozytoriów narzędzi "
+              f"({dead} nie istnieje).")
     return found
 
 

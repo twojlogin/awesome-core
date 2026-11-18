@@ -1471,3 +1471,98 @@ class TestDatabase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestQualityRefinements(unittest.TestCase):
+    def test_repo_quality_star_cap(self):
+        # <20★ -> cap ~0.70 even with perfect signals
+        stats = {
+            "total": 200, "with_desc": 200, "duplicates": 0, "junk": 0,
+            "alive_checked": 200, "alive_ok": 200, "projects": 1.0,
+            "pushed_at": "2026-01-01T00:00:00Z", "list_stars": 5,
+        }
+        q = scoring.repo_quality(stats)["quality"]
+        self.assertLessEqual(q, 0.70 + 1e-9)
+        # <100★ -> cap ~0.85
+        stats["list_stars"] = 50
+        q = scoring.repo_quality(stats)["quality"]
+        self.assertLessEqual(q, 0.85 + 1e-9)
+        self.assertGreater(q, 0.70)
+        # >=500★ can reach high quality
+        stats["list_stars"] = 1000
+        q = scoring.repo_quality(stats)["quality"]
+        self.assertGreater(q, 0.90)
+
+    def test_owner_farm_penalty(self):
+        base = {
+            "total": 120, "with_desc": 120, "duplicates": 0, "junk": 0,
+            "alive_checked": 120, "alive_ok": 120, "projects": 1.0,
+            "pushed_at": "2026-01-01T00:00:00Z", "list_stars": 80,
+        }
+        q_ok = scoring.repo_quality(dict(base))["quality"]
+        farm = dict(base)
+        farm["owner_farm"] = True
+        farm["owner_farm_multiplier"] = 0.78
+        q_farm = scoring.repo_quality(farm)["quality"]
+        self.assertLess(q_farm, q_ok)
+        self.assertAlmostEqual(q_farm, round(min(q_ok, 0.85) * 0.78, 4), places=4)
+
+    def test_size_penalty_softened_for_high_trust(self):
+        # very large list, low trust -> penalized more
+        low = scoring.size_factor(5000, list_stars=10)
+        high = scoring.size_factor(5000, list_stars=5000)
+        self.assertLess(low, high)
+        self.assertGreater(high, 0.90)
+
+
+class TestEnrichPriority(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.conn = store.connect(self.tmp)
+        self.conn.executescript(
+            """
+            INSERT INTO tools(name,name_norm,url,url_norm,source_repo,lists_count,score,tool_stars)
+            VALUES
+             ('a','a','https://github.com/o/one','github.com/o/one','x/y',2,10,0),
+             ('b','b','https://github.com/o/two','github.com/o/two','x/y',50,5,0),
+             ('c','c','https://github.com/o/three','github.com/o/three','x/y',10,100,0);
+            """
+        )
+        self.conn.commit()
+
+    def tearDown(self):
+        self.conn.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_missing_repos_prefers_mentions(self):
+        from core import enrich
+        pairs = enrich.missing_repos(self.conn, limit=10, priority=True)
+        keys = [f"{o}/{n}" for o, n in pairs]
+        self.assertEqual(keys[0], "o/two")  # highest lists_count/mentions
+
+
+class TestFetchRetryState(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.conn = store.connect(self.tmp)
+
+    def tearDown(self):
+        self.conn.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_retry_after_defers(self):
+        from datetime import datetime, timedelta, timezone
+        future = (datetime.now(timezone.utc) + timedelta(days=2)).strftime('%Y-%m-%dT%H:%M:%SZ')
+        store.set_list_fetch_state(self.conn, 'o/r', kind='list', status='404', fail_count=1,
+                                   retry_after_at=future, reason='missing')
+        self.assertTrue(store.list_fetch_deferred(self.conn, 'o/r', kind='list'))
+        store.clear_list_fetch_ok(self.conn, 'o/r', kind='list')
+        self.assertFalse(store.list_fetch_deferred(self.conn, 'o/r', kind='list'))
+
+    def test_bump_failure_sets_backoff(self):
+        store.bump_list_fetch_failure(self.conn, 'o/miss', kind='backfill', status='missing',
+                                      reason='404', retry_days=7, commit=True)
+        row = self.conn.execute("SELECT status, fail_count, retry_after_at FROM list_fetch_state WHERE full_name='o/miss'").fetchone()
+        self.assertEqual(row['status'], 'missing')
+        self.assertEqual(row['fail_count'], 1)
+        self.assertTrue(row['retry_after_at'])

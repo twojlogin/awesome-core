@@ -10,7 +10,9 @@ PIERWSZE URUCHOMIENIE (zacznij tutaj):
 
 Codziennie:
   awesome status                    — co jest w bazie i co warto odświeżyć
-  awesome refresh                   — pobierz nowe listy i przebuduj bazę (nic nie działa w tle)
+  awesome refresh                   — szybkie odświeżenie: download + lekki backfill braków + build
+      --full                        — pełne odświeżenie: + backfill + enrich (z limitem) + build
+      --enrich-limit N              — limit enrich w trybie pełnym (domyślnie 1000)
 
 Wyszukiwanie:
   awesome search <zapytanie>          — szukaj narzędzi offline
@@ -507,11 +509,18 @@ def cmd_topic(topic, sort="stars", wide=True, limit=None):
     from core import fetcher
 
     print(f"Pobieram topic: {topic}" + (" (kilka zapytań)" if wide else ""))
-    status, new, skipped, missing = fetcher.download(
-        topic=topic, wide=wide, sort=sort, limit=limit)
+    result = fetcher.download(
+        topic=topic, wide=wide, sort=sort, limit=limit, data_dir=BASE_DIR / "data")
+    if len(result) == 5:
+        status, new, skipped, missing, deferred = result
+    else:
+        status, new, skipped, missing = result
+        deferred = 0
     if status != 0:
         print(f"Pobieranie zakończone z kodem {status} — `./awesome status` "
               f"powie, co zostało.")
+    if deferred:
+        print(f"Odroczono {deferred} list (retry_after po błędach/404).")
     print(f"Gotowe. Następny krok: ./awesome build   (potem ./awesome backfill)")
 
 
@@ -848,34 +857,69 @@ def cmd_start(args):
 
 
 def cmd_refresh(args):
-    """Jedna komenda zamiast tła: download -> backfill -> enrich -> build."""
+    """Odświeżanie na żądanie, bez automatu w tle.
+
+    Domyślnie (quick): download + lekki backfill tylko braków/nowych list
+    (z retry_after) + build. Bez enrich. Pełne odświeżenie: --full (albo
+    jawne kroki), wtedy dochodzi backfill i enrich z limitem.
+    """
     steps = [a for a in args if not a.startswith("-")]
-    limit = _flag_int(args, "--enrich-limit", 40000)
+    limit = _flag_int(args, "--enrich-limit", 1000)
     dry_run = "--dry-run" in args
+    full = "--full" in args
     wanted = set(steps) & {"download", "backfill", "enrich", "build"}
-    plan = {}
-    for name in ("download", "backfill", "enrich", "build"):
-        plan[name] = (name in wanted) or (not wanted and f"--skip-{name}" not in args)
-    print("[*] Odświeżanie bazy — wszystko na żądanie, w tle nic nie działa.")
-    for name, enabled in plan.items():
-        print(f"    {name}: {'tak' if enabled else 'pomijam'}")
+    quick = not full and not wanted and "--quick" not in args or ("--quick" in args)
+
+    def enabled(name, heavy=False):
+        if f"--skip-{name}" in args:
+            return False
+        if name in wanted:
+            return True
+        if wanted:
+            return False
+        if full:
+            return True
+        # domyślnie szybki tryb: download + backfill (lekki) + build
+        if name == "enrich":
+            return False
+        return True
+
+    plan = {
+        "download": enabled("download", heavy=False),
+        "backfill": enabled("backfill", heavy=False),
+        "enrich": enabled("enrich", heavy=True),
+        "build": enabled("build", heavy=False),
+    }
+
+    print("[*] Odświeżanie bazy — na żądanie, bez automatu w tle.")
+    if not full and not wanted:
+        print("    tryb szybki: download + lekki backfill (tylko braki, retry_after) + build.")
+        print("    pełne odświeżenie: ./awesome refresh --full  (albo dopisz: backfill enrich)")
+    for name, on in plan.items():
+        suffix = ""
+        if name == "backfill" and on and not full and not ("backfill" in wanted):
+            suffix = " (tylko braki)"
+        if name == "enrich" and on:
+            suffix = f" (limit {limit})"
+        print(f"    {name}: {'tak' if on else 'pomijam'}{suffix}")
     if dry_run:
         print("\n(dry-run: nic nie uruchamiam)")
         return
-    want = plan
 
-    if want["download"]:
+    light_backfill = plan["backfill"] and (not full) and ("backfill" not in wanted)
+
+    if plan["download"]:
         topic = steps[0] if steps and not steps[0].isdigit() else "awesome-list"
-        print(f"\n=== 1/4 pobieranie list (topic: {topic}) ===")
+        print(f"\n=== pobieranie list (topic: {topic}) ===")
         cmd_topic(topic)
-    if want["backfill"]:
-        print("\n=== 2/4 metadane list ===")
-        cmd_backfill()
-    if want["enrich"]:
-        print(f"\n=== 3/4 metadane narzędzi (limit {limit}) ===")
+    if plan["backfill"]:
+        print("\n=== metadane list ===")
+        cmd_backfill(limit=None, force=False, only_missing=light_backfill)
+    if plan["enrich"]:
+        print(f"\n=== metadane narzędzi (limit {limit}) ===")
         cmd_enrich(limit)
-    if want["build"]:
-        print("\n=== 4/4 przebudowa bazy ===")
+    if plan["build"]:
+        print("\n=== przebudowa bazy ===")
         cmd_build()
     print()
     cmd_status()
@@ -887,11 +931,11 @@ def cmd_enrich(limit=None):
     return 0 if enrich.enrich(limit=limit) is not None else 1
 
 
-def cmd_backfill(limit=None, force=False):
+def cmd_backfill(limit=None, force=False, only_missing=False):
     from core import backfill
 
     backfill.clean_index()
-    backfill.backfill(limit=limit, force=force)
+    backfill.backfill(limit=limit, force=force, only_missing=only_missing)
 
 
 def cmd_validate(limit=None, non_github=False):
@@ -1276,7 +1320,8 @@ def main():
     elif cmd == "enrich":
         cmd_enrich(_flag_int(args, "--limit"))
     elif cmd == "backfill":
-        cmd_backfill(_flag_int(args, "--limit"), force="--force" in args)
+        cmd_backfill(_flag_int(args, "--limit"), force="--force" in args,
+                     only_missing="--only-missing" in args)
     elif cmd in {"selfcheck", "sprawdz-siebie"}:
         tools_db, _, _ = dbs()
         cmd_selfcheck(tools_db)

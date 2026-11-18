@@ -17,12 +17,13 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from core import api
+from core import api, store
 DATA_DIR = BASE_DIR / "offline-db" / "data"
 README_DIR = DATA_DIR / "readmes"
 INDEX_FILE = DATA_DIR / "index.json"
@@ -42,10 +43,11 @@ MAX_PAGES = 10          # GitHub Search oddaje maks. 1000 wyników na zapytanie
 PAUSE = 0.3             # uprzejmość dla raw.githubusercontent
 
 
-def fetch_readme(full_name, token):
-    """README z gałęzi main, a jak nie ma to master. Zwraca treść albo None."""
+def fetch_readme_status(full_name, token):
+    """Jak fetch_readme, ale zwraca (content, status)."""
+    saw_404 = False
     for branch in ("main", "master"):
-        url = (f"https://raw.githubusercontent.com/{full_name}/{branch}/README.md")
+        url = f"https://raw.githubusercontent.com/{full_name}/{branch}/README.md"
         request = urllib.request.Request(url, headers={"User-Agent": "awesome-core"})
         if token:
             request.add_header("Authorization", f"bearer {token}")
@@ -53,14 +55,28 @@ def fetch_readme(full_name, token):
             with urllib.request.urlopen(request, timeout=30) as response:
                 data = response.read()
             if data.strip():
-                return data.decode("utf-8", "replace")
+                return data.decode("utf-8", "replace"), "ok"
+            saw_404 = True
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
+                saw_404 = True
                 continue
-            return None
+            return None, "error"
         except (urllib.error.URLError, TimeoutError, OSError):
-            return None
-    return None
+            return None, "error"
+    return None, "missing" if saw_404 else "error"
+
+
+def fetch_readme(full_name, token):
+    """README z gałęzi main, a jak nie ma to master. Zwraca treść albo None.
+
+    Kompatybilne z testami/patchowaniem (można podmienić tę funkcję).
+    """
+    content, _status = fetch_readme_status(full_name, token)
+    return content
+
+
+_DEFAULT_FETCH_README = fetch_readme
 
 
 def merge_index(items, downloaded, token):
@@ -107,9 +123,17 @@ def merge_index(items, downloaded, token):
                           encoding="utf-8")
 
 
+def _retry_days(status, fail_count):
+    if status == "error":
+        return 1 if fail_count <= 1 else 3
+    # missing/404: 7 dni, potem 30 dni dla trwałych braków
+    return 30 if fail_count >= 2 else 7
+
+
 def download(topic="awesome-list", wide=True, refresh=False, sort="stars",
-             start_page=1, verbose=True, limit=None):
-    """Główna pętla. Zwraca (status, nowe, pominięte, bez_readme)."""
+             start_page=1, verbose=True, limit=None, data_dir=None, return_deferred=False):
+    """Główna pętla. Zwraca (status, nowe, pominięte, bez_readme) dla kompatybilności,
+    a z return_deferred=True: (status, nowe, pominięte, bez_readme, odroczone)."""
     token = api.token()
     if verbose:
         print(f"[*] GitHub: {api.describe()}")
@@ -118,58 +142,118 @@ def download(topic="awesome-list", wide=True, refresh=False, sort="stars",
                   "dopuszcza 10 zapytań na minutę. Przyspieszysz: "
                   f"{api.speedup_hint()}")
     README_DIR.mkdir(parents=True, exist_ok=True)
+    conn = None
+    try:
+        if data_dir is not None:
+            conn = store.connect(data_dir)
+        elif store.db_ready(store.DATA_DIR):
+            conn = store.connect(store.DATA_DIR)
+    except Exception:
+        conn = None
+
     queries = [f"topic:{topic}"] + (QUERIES_WIDE[1:] if wide else [])
-    new = skipped = missing = 0
+    new = skipped = missing = deferred = 0
     downloaded = set()
     stop = False
 
-    for query in queries:
-        seen_first = None
-        for page in range(start_page, MAX_PAGES + 1):
-            if verbose:
-                print(f"\n[*] {query} — strona {page}", flush=True)
-            payload = api.search_repositories(query, page=page, per_page=PER_PAGE,
-                                              sort=sort)
-            if payload is None:
-                return 1, new, skipped, missing
-            items = payload.get("items") or []
-            if not items:
-                break
-            first = items[0].get("full_name")
-            if first == seen_first:
+    try:
+        for query in queries:
+            seen_first = None
+            for page in range(start_page, MAX_PAGES + 1):
                 if verbose:
-                    print(f"[*] Paginacja zapętliła się na {first} "
-                          f"(limit 1000). Kończę to zapytanie.")
-                break
-            seen_first = first
-            for item in items:
-                if limit and (new + skipped) >= limit:
-                    stop = True
+                    print(f"\n[*] {query} — strona {page}", flush=True)
+                payload = api.search_repositories(query, page=page, per_page=PER_PAGE,
+                                                  sort=sort)
+                if payload is None:
+                    return 1, new, skipped, missing, deferred
+                items = payload.get("items") or []
+                if not items:
                     break
-                full = item.get("full_name")
-                if not full or "/" not in full:
-                    continue
-                owner, name = full.split("/", 1)
-                target = README_DIR / f"{owner}__{name}.md"
-                if target.exists() and not refresh:
-                    skipped += 1
+                first = items[0].get("full_name")
+                if first == seen_first:
+                    if verbose:
+                        print(f"[*] Paginacja zapętliła się na {first} "
+                              f"(limit 1000). Kończę to zapytanie.")
+                    break
+                seen_first = first
+                for item in items:
+                    if limit and (new + skipped + deferred) >= limit:
+                        stop = True
+                        break
+                    full = item.get("full_name")
+                    if not full or "/" not in full:
+                        continue
+                    owner, name = full.split("/", 1)
+                    target = README_DIR / f"{owner}__{name}.md"
+                    if target.exists() and not refresh:
+                        skipped += 1
+                        downloaded.add(full)
+                        if conn is not None:
+                            try:
+                                store.clear_list_fetch_ok(conn, full, kind="list", commit=False)
+                            except Exception:
+                                pass
+                        continue
+                    if conn is not None:
+                        try:
+                            if store.list_fetch_deferred(conn, full, kind="list"):
+                                deferred += 1
+                                continue
+                        except Exception:
+                            pass
+                    if fetch_readme is _DEFAULT_FETCH_README:
+                        content, status_kind = fetch_readme_status(full, token)
+                    else:
+                        # compat: podmieniona funkcja (testy) zwraca tylko content
+                        content = fetch_readme(full, token)
+                        status_kind = "ok" if content else "missing"
+                    if not content:
+                        missing += 1
+                        if conn is not None:
+                            try:
+                                prev = conn.execute(
+                                    "SELECT fail_count FROM list_fetch_state WHERE full_name=?",
+                                    (full,),
+                                ).fetchone()
+                                prev_fail = int(prev["fail_count"] or 0) if prev else 0
+                                store.bump_list_fetch_failure(
+                                    conn, full, kind="list", status=status_kind,
+                                    reason=status_kind, retry_days=_retry_days(status_kind, prev_fail + 1),
+                                    commit=False,
+                                )
+                            except Exception:
+                                pass
+                        continue
+                    target.write_text(content, encoding="utf-8")
                     downloaded.add(full)
-                    continue
-                content = fetch_readme(full, token)
-                if not content:
-                    missing += 1
-                    continue
-                target.write_text(content, encoding="utf-8")
-                downloaded.add(full)
-                new += 1
-                if verbose:
-                    print(f"  + {full}", flush=True)
-                time.sleep(PAUSE)
-            if len(items) < PER_PAGE or stop:
+                    new += 1
+                    if conn is not None:
+                        try:
+                            store.clear_list_fetch_ok(conn, full, kind="list", commit=False)
+                        except Exception:
+                            pass
+                    if verbose:
+                        print(f"  + {full}", flush=True)
+                    time.sleep(PAUSE)
+                if conn is not None:
+                    try:
+                        conn.commit()
+                    except Exception:
+                        pass
+                if len(items) < PER_PAGE or stop:
+                    break
+            merge_index(items, downloaded, token)
+            if stop:
                 break
-        merge_index(items, downloaded, token)
-        if stop:
-            break
+    finally:
+        if conn is not None:
+            try:
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+    if return_deferred:
+        return 0, new, skipped, missing, deferred
     return 0, new, skipped, missing
 
 
@@ -187,12 +271,16 @@ def main(argv=None):
             limit = None
     if args and not args[0].startswith("-"):
         topic = args[0]
-    status, new, skipped, missing = download(
-        topic=topic, wide=wide, refresh=refresh, verbose=verbose, limit=limit)
+    result = download(
+        topic=topic, wide=wide, refresh=refresh, verbose=verbose, limit=limit,
+        return_deferred=True)
+    status, new, skipped, missing, deferred = result
     if verbose:
         print(f"\n[*] Nowych/pobranych: {new}")
         print(f"[*] Pominiętych (już było): {skipped}")
         print(f"[*] Bez README: {missing}")
+        if deferred:
+            print(f"[*] Odroczonych (retry_after): {deferred}")
         print(f"[*] Pliki w: {README_DIR}")
         print("[*] Następne: ./awesome build   (a potem ./awesome backfill)")
     return status

@@ -77,13 +77,33 @@ def freshness(pushed_at, now=None):
     return round(0.5 ** (days / FRESH_HALFLIFE_DAYS), 4)
 
 
-def size_factor(count):
-    """Nasycenie: małe listy są mniej wiarygodne, duże nie rosną w nieskończoność."""
+def size_factor(count, list_stars=0):
+    """Nasycenie rozmiaru: małe listy słabe, duże dumpy karane.
+
+    Dla bardzo wiarygodnych list (list_stars >= 3000) kara za duży rozmiar
+    (>1500) jest łagodzona, żeby flagowe listy społecznościowe nie przegrywały
+    z małymi skryptami.
+    """
     if count <= 0:
         return 0.0
     if count < 30:
         return round(0.15 * count / 30, 4)
-    return round(min(1.0, math.log10(count) / math.log10(1000)), 4)
+
+    list_stars = max(0, int(list_stars or 0))
+    base = min(1.0, math.log10(count) / math.log10(1000))
+
+    if count > 1500:
+        # lekka kara za megadumpy, chyba że lista ma bardzo silną społeczność
+        if list_stars >= 3000:
+            penalty = 0.97  # prawie bez kary dla flagowych list
+        elif list_stars >= 500:
+            penalty = 0.90
+        else:
+            excess = min(1.0, (count - 1500) / 8500.0)
+            penalty = 1.0 - 0.25 * excess
+        base *= penalty
+
+    return round(max(0.0, min(1.0, base)), 4)
 
 
 def star_factor(stars):
@@ -110,7 +130,12 @@ def consensus(list_count, owners_count, quality_sum):
 
 
 def repo_quality(stats, now=None):
-    """Jakość listy 0..1 z rozbiciem na składowe (do `--explain`)."""
+    """Jakość listy 0..1 z rozbiciem na składowe (do `--explain`).
+
+    Dodatkowe sygnały (jeśli dostępne w stats): list_stars, median_tool_stars,
+    owner_farm (bool) / owner_farm_multiplier. Sufit jakości zależy od gwiazdek
+    samej listy, żeby agregaty bez własnej społeczności nie osiągały 1.0.
+    """
     total = max(0, int(stats.get("total", 0) or 0))
     with_desc = max(0, int(stats.get("with_desc", 0) or 0))
     duplicates = max(0, int(stats.get("duplicates", 0) or 0))
@@ -119,15 +144,17 @@ def repo_quality(stats, now=None):
     alive_ok = max(0, int(stats.get("alive_ok", 0) or 0))
     projects = stats.get("projects")
     projects_ratio = 0.6 if projects is None else max(0.0, min(1.0, float(projects)))
+    list_stars = max(0, int(stats.get("list_stars", stats.get("stars", 0)) or 0))
 
     denom = max(1, total)
+    alive_ratio = (alive_ok / alive_checked) if alive_checked else None
     parts = {
         "desc": round(with_desc / denom, 4),
         "unique": round(1.0 - min(1.0, duplicates / denom), 4) if total else 0.0,
-        "alive": round(alive_ok / alive_checked, 4) if alive_checked else None,
+        "alive": round(alive_ratio, 4) if alive_ratio is not None else None,
         "projects": round(projects_ratio, 4) if total else 0.0,
         "fresh": freshness(stats.get("pushed_at"), now),
-        "size": size_factor(total),
+        "size": size_factor(total, list_stars=list_stars),
     }
     quality = 0.0
     weight_sum = 0.0
@@ -137,8 +164,34 @@ def repo_quality(stats, now=None):
             continue
         quality += weight * value
         weight_sum += weight
+    quality = (quality / weight_sum) if weight_sum else 0.0
+
+    # Sufit zaufania zależny od gwiazdek samej listy: wysoka median_tool_stars
+    # / żywotność nie mogą przeskoczyć braku własnej społeczności listy.
+    if list_stars < 20:
+        star_cap = 0.70
+    elif list_stars < 100:
+        star_cap = 0.85
+    elif list_stars < 300:
+        star_cap = 0.94
+    elif list_stars < 500:
+        star_cap = 0.97
+    else:
+        star_cap = 1.00
+    quality = min(quality, star_cap)
+    parts["star_cap"] = round(star_cap, 4)
+
+    # Farma jednego autora: wiele list o niskiej medianie gwiazdek.
+    farm_mult = 1.0
+    if stats.get("owner_farm"):
+        farm_mult = float(stats.get("owner_farm_multiplier", 0.78) or 0.78)
+        quality *= farm_mult
+    parts["owner_farm"] = 1.0 if stats.get("owner_farm") else 0.0
+    if farm_mult != 1.0:
+        parts["owner_farm_mult"] = round(farm_mult, 4)
+
     parts["junk"] = round(junk / denom, 4)
-    parts["quality"] = round(min(1.0, quality / weight_sum), 4) if weight_sum else 0.0
+    parts["quality"] = round(max(0.0, min(1.0, quality)), 4)
     return parts
 
 
