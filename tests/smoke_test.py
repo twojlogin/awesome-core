@@ -1508,11 +1508,13 @@ class TestQualityRefinements(unittest.TestCase):
         self.assertAlmostEqual(q_farm, round(min(q_ok, 0.85) * 0.78, 4), places=4)
 
     def test_size_penalty_softened_for_high_trust(self):
-        # very large list, low trust -> penalized more
+        # very large list, low trust -> penalized more; ekstremalne megadumpy
+        # są karane nawet przy wysokim zaufaniu (ale łagodniej niż bez niego)
         low = scoring.size_factor(5000, list_stars=10)
         high = scoring.size_factor(5000, list_stars=5000)
         self.assertLess(low, high)
-        self.assertGreater(high, 0.90)
+        self.assertGreaterEqual(high, 0.70)
+        self.assertLess(high, 0.90)  # >5000 pozycji = twardy megadump
 
 
 class TestEnrichPriority(unittest.TestCase):

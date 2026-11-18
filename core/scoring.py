@@ -78,30 +78,39 @@ def freshness(pushed_at, now=None):
 
 
 def size_factor(count, list_stars=0):
-    """Nasycenie rozmiaru: małe listy słabe, duże dumpy karane.
+    """Nasycenie rozmiaru: małe listy słabe, duże dumpy/megadumpy karane.
 
-    Dla bardzo wiarygodnych list (list_stars >= 3000) kara za duży rozmiar
-    (>1500) jest łagodzona, żeby flagowe listy społecznościowe nie przegrywały
-    z małymi skryptami.
+    Kuratorskie ~50-1500 premiowane; powyżej tego rośnie kara, zwłaszcza
+    dla ekstremalnych zrzutów (>3000-5000). Nawet bardzo popularne listy
+    nie dostają pełnej oceny za sam rozmiar, gdy są megadumpem.
     """
     if count <= 0:
         return 0.0
     if count < 30:
         return round(0.15 * count / 30, 4)
 
+    count = int(count)
     list_stars = max(0, int(list_stars or 0))
     base = min(1.0, math.log10(count) / math.log10(1000))
 
     if count > 1500:
-        # lekka kara za megadumpy, chyba że lista ma bardzo silną społeczność
+        excess = min(1.0, (count - 1500) / 8500.0)
         if list_stars >= 3000:
-            penalty = 0.97  # prawie bez kary dla flagowych list
+            # popularne megadumpy: kara łagodniejsza, ale rośnie przy ekstremach
+            penalty = 0.94 - 0.18 * excess
+            if count > 5000:
+                penalty -= 0.05
         elif list_stars >= 500:
-            penalty = 0.90
+            penalty = 0.88 - 0.18 * excess
         else:
-            excess = min(1.0, (count - 1500) / 8500.0)
-            penalty = 1.0 - 0.25 * excess
-        base *= penalty
+            penalty = 1.0 - 0.35 * excess
+        base *= max(0.45, penalty)
+
+    # twardy sufit dla skrajnych megadumpów
+    if count > 4000:
+        base = min(base, 0.82 if list_stars >= 3000 else 0.70)
+    elif count > 3000:
+        base = min(base, 0.90 if list_stars >= 3000 else 0.78)
 
     return round(max(0.0, min(1.0, base)), 4)
 
@@ -173,20 +182,38 @@ def repo_quality(stats, now=None):
     elif list_stars < 100:
         star_cap = 0.85
     elif list_stars < 300:
-        star_cap = 0.94
+        star_cap = 0.92
     elif list_stars < 500:
-        star_cap = 0.97
+        star_cap = 0.95
+    elif list_stars < 1500:
+        star_cap = 0.98
     else:
         star_cap = 1.00
+
+    # ekstremalne megadumpy (nawet popularne) nie dostają idealnego wyniku
+    if total > 5000:
+        star_cap = min(star_cap, 0.93)
+    elif total > 3000:
+        star_cap = min(star_cap, 0.96)
+
     quality = min(quality, star_cap)
     parts["star_cap"] = round(star_cap, 4)
 
-    # Farma jednego autora: wiele list o niskiej medianie gwiazdek.
+    # Farma/masowy agregator jednego autora.
     farm_mult = 1.0
     if stats.get("owner_farm"):
         farm_mult = float(stats.get("owner_farm_multiplier", 0.78) or 0.78)
         quality *= farm_mult
+    if stats.get("owner_mass_aggregator") and not stats.get("owner_farm"):
+        farm_mult = float(stats.get("owner_aggregator_multiplier", 0.72) or 0.72)
+        quality *= farm_mult
+    elif stats.get("owner_mass_aggregator") and stats.get("owner_farm"):
+        # oba sygnały naraz -> mocniej
+        farm_mult = min(farm_mult, float(stats.get("owner_aggregator_multiplier", 0.72) or 0.72))
+        quality = min(quality, parts.get("quality", quality))  # no-op safety
+        quality *= 0.95
     parts["owner_farm"] = 1.0 if stats.get("owner_farm") else 0.0
+    parts["owner_mass_aggregator"] = 1.0 if stats.get("owner_mass_aggregator") else 0.0
     if farm_mult != 1.0:
         parts["owner_farm_mult"] = round(farm_mult, 4)
 
