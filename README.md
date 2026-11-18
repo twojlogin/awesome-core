@@ -320,12 +320,12 @@ The catalog is built from **third-party repositories**, so malicious or low-qual
 ./awesome audit
 ```
 
-Signals include: many tools with zero stars, single-owner link farms, self-promotion (lists pushing the same owner's repositories), many dead links, very new repos with lots of tools, clones of other lists, and suspicious links/domains (typosquatting-like, IPs, punycode, etc.).
+Signals include (heuristic, for manual review): many tools with zero stars, low-diversity or single-owner external GitHub link sets, self-promotion of **other repositories** by the same owner (links inside the audited list's own repo are treated separately as internal/monorepo structure), many dead links, clones of other lists, and suspicious links/domains (typosquatting-like, IPs, punycode, etc.). Audit may also add context labels such as auto-generated star dumps or same-owner multi-list low-reputation farms.
 
 Important caveats:
 - **Not malware scanning of target repos.** It flags suspicious signals, not proof of malice.
 - **Signals are for manual review**, not automatic verdicts.
-- Ranking already resists single-list influence: tools benefit from agreement across independent lists and clone detection reduces duplicate influence.
+- Ranking/build also reduce single-source influence: tools benefit from agreement across independent lists, clone detection reduces duplicate influence, and suspected SEO farms/mass aggregators are tracked to limit their impact on consensus/quality.
 - **`awesome install` is only `git clone`.** It does not execute remote code, but you decide what to do with cloned code afterward.
 
 Rule of thumb: a tool from one new/unknown list is a reason to inspect, not blindly install.
