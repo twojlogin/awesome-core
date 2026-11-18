@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="{{ lang }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -104,16 +104,19 @@
 <nav>
     <a href="/" class="logo">⚡ Awesome Core</a>
     <div class="links">
-        <a href="/lists">Listy</a>
-        <a href="/lists/clones">Kopie</a>
-        <a href="/underrated">Niedoceniane</a>
-        <a href="/gems">Perełki</a>
-        <a href="/stats">Statystyki</a>
-        <a href="/shortlist">Moja lista</a>
-        <a href="/refresh">Odśwież</a>
-        <a href="/installed">Zainstalowane</a>
-        <a href="/add">+ Dodaj</a>
-        <a href="/help">Pomoc</a>
+        <a href="/lists">{{ t('nav_lists') }}</a>
+        <a href="/lists/clones">{{ t('clones') }}</a>
+        <a href="/underrated">{{ t('underrated') }}</a>
+        <a href="/gems">{{ t('hidden_gems') }}</a>
+        <a href="/stats">{{ t('stats') }}</a>
+        <a href="/shortlist">{{ t('nav_my_list') }}</a>
+        <a href="/refresh">{{ t('nav_refresh') }}</a>
+        <a href="/installed">{% if lang == "en" %}Installed{% else %}Zainstalowane{% endif %}</a>
+        <a href="/add">{% if lang == "en" %}+ Add{% else %}+ Dodaj{% endif %}</a>
+        <a href="/help">{{ t('nav_help') }}</a>
+        <span class="small dim" style="margin-left:0.5rem;">
+            {% if lang == 'en' %}<strong>EN</strong> · <a href="{{ lang_switch_url('pl') }}">PL</a>{% else %}<a href="{{ lang_switch_url('en') }}">EN</a> · <strong>PL</strong>{% endif %}
+        </span>
     </div>
 </nav>
 <main>

@@ -1,22 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Awesome Core — narzędzia z awesome list{% endblock %}
+{% block title %}Awesome Core{% endblock %}
 {% block content %}
 <div class="panel">
-    <h2 style="margin-top:0;">{{ "{:,}".format(stats.total) }} narzędzi · {{ stats.lists }} list · {{ stats.langs }} języków</h2>
+    <h2 style="margin-top:0;">{{ "{:,}".format(stats.total) }} {{ t('tools') }} · {{ stats.lists }} {{ t('lists') }} · {{ stats.langs }} {{ t('languages') }}</h2>
     <form action="/search" method="get" class="row">
-        <input type="text" name="q" placeholder="vpn, powershell, osint, windows, docker..." style="flex:1;">
-        <button type="submit">Szukaj</button>
+        <input type="text" name="q" placeholder="{{ t('search_placeholder') }}" style="flex:1;">
+        <button type="submit">{{ t('search_button') }}</button>
     </form>
     <div class="small dim" style="margin-top:0.5rem;">
-        {{ "{:,}".format(stats.with_desc) }} z opisem · ranking = zgoda niezależnych kuratorów + jakość listy + własne gwiazdki narzędzia
+        {{ "{:,}".format(stats.with_desc) }} {{ t('ranking_note') }}
     </div>
 </div>
 
 <div class="grid">
 <div>
-    <h2>Listy z najwyższą oceną jakości</h2>
+    <h2>{{ t('best_lists') }}</h2>
     <table class="data">
-        <tr><th>lista</th><th>★</th><th>jakość</th><th>narzędzi</th></tr>
+        <tr><th>{{ t('list') }}</th><th>★</th><th>{{ t('quality') }}</th><th>{{ t('tools') }}</th></tr>
         {% for row in best_lists %}
         <tr>
             <td><a href="/list/{{ row.full_name }}">{{ row.full_name }}</a></td>
@@ -27,10 +27,10 @@
         {% endfor %}
     </table>
 
-    <h2 style="margin-top:1.5rem;">Największe listy</h2>
+    <h2 style="margin-top:1.5rem;">{{ t('biggest_lists') }}</h2>
     <table class="data">
         {% for name, count in top_lists %}
-        <tr><td><a href="/list/{{ name }}">{{ name }}</a></td><td>{{ count }} narzędzi</td></tr>
+        <tr><td><a href="/list/{{ name }}">{{ name }}</a></td><td>{{ count }} {{ t('tools') }}</td></tr>
         {% endfor %}
     </table>
 </div>
