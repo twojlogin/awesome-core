@@ -26,6 +26,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Local tool configs (may contain secrets/tokens)
+.gemini/
+
 # logi przebiegów (download/enrich) — robocze, nie do repo
 logs/
 

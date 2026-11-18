@@ -1,9 +1,15 @@
 .git
+.gemini
+.vscode
 .venv
 venv
 __pycache__
 *.pyc
+*.pyo
+.pytest_cache
+*.egg-info
 data/
 offline-db/
 logs/
 .env
+*.env
