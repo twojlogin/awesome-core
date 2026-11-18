@@ -2,6 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/awesome-core?label=PyPI)](https://pypi.org/project/awesome-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/awesome-core)](https://pypi.org/project/awesome-core/)
+[![CI](https://github.com/twojlogin/awesome-core/actions/workflows/ci.yml/badge.svg)](https://github.com/twojlogin/awesome-core/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.twojlogin%2Fawesome--core-6f42c1)](https://registry.modelcontextprotocol.io/v0/servers?search=awesome-core)
 
