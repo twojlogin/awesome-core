@@ -1100,6 +1100,28 @@ class TestPoisoningDetection(unittest.TestCase):
         conn.close()
         self.assertIn("evil/awesome-tools", [f["full_name"] for f in flagged])
 
+    def test_star_dump_is_labeled_in_info(self):
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        name = "someone/awesome-stars"
+        conn.execute(
+            "INSERT OR REPLACE INTO repos (full_name, owner, name, url, stars,"
+            " description, unique_tool_count) VALUES (?,?,?,?,?,?,?)",
+            (name, "someone", "awesome-stars", f"https://github.com/{name}", 2, "", 501))
+        for i in range(501):
+            conn.execute(
+                "INSERT OR REPLACE INTO tools (name, name_norm, url, url_norm,"
+                " host, description, source_repo, alive, lists_count, score)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (f"tool{i}", f"tool{i}", f"https://github.com/other{i}/t{i}",
+                 f"github.com/other{i}/t{i}", "github.com", "x", name, 1, 1, 10))
+        conn.commit()
+        verdict = poisoning.assess_list(conn, name)
+        conn.close()
+        self.assertIn("automatyczny zrzut gwiazdek (star dump)", verdict["info"])
+        self.assertEqual(verdict["status"], "warto sprawdzić")
+
     def test_lookalike_urls_are_flagged(self):
         for url, expected in (
             ("github.com@evil.tld/x", "@"),
@@ -1142,6 +1164,56 @@ class TestPoisoningDetection(unittest.TestCase):
         verdict = poisoning.assess_list(conn, name)
         conn.close()
         self.assertEqual(verdict["status"], "warto sprawdzić")
+        self.assertTrue(any("autopromocja" in w for w in verdict["attention"]),
+                        verdict["attention"])
+
+    def test_internal_repo_links_are_not_self_promotion(self):
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        name = "acme/awesome-acme"
+        conn.execute(
+            "INSERT OR REPLACE INTO repos (full_name, owner, name, url, stars,"
+            " description, unique_tool_count) VALUES (?,?,?,?,?,?,?)",
+            (name, "acme", "awesome-acme", f"https://github.com/{name}", 50, "", 20))
+        for i in range(20):
+            url_norm = f"github.com/acme/awesome-acme/blob/main/doc{i}.md"
+            conn.execute(
+                "INSERT OR REPLACE INTO tools (name, name_norm, url, url_norm,"
+                " host, description, source_repo, alive, lists_count, score)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (f"tool{i}", f"tool{i}", f"https://{url_norm}", url_norm,
+                 "github.com", "x", name, 1, 1, 10))
+        conn.commit()
+        verdict = poisoning.assess_list(conn, name)
+        conn.close()
+        self.assertFalse(any("autopromocja" in w for w in verdict["attention"]),
+                         verdict["attention"])
+        self.assertIn("struktura monorepo / linki wewnętrzne do plików tego samego repozytorium",
+                      verdict["info"])
+
+    def test_external_same_owner_repo_links_are_self_promotion(self):
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        name = "acme/awesome-acme"
+        conn.execute(
+            "INSERT OR REPLACE INTO repos (full_name, owner, name, url, stars,"
+            " description, unique_tool_count) VALUES (?,?,?,?,?,?,?)",
+            (name, "acme", "awesome-acme", f"https://github.com/{name}", 50, "", 20))
+        for i in range(20):
+            owner = "acme" if i < 12 else f"other{i}"
+            repo_name = f"other-project-{i}" if i < 12 else f"t{i}"
+            url_norm = f"github.com/{owner}/{repo_name}"
+            conn.execute(
+                "INSERT OR REPLACE INTO tools (name, name_norm, url, url_norm,"
+                " host, description, source_repo, alive, lists_count, score)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (f"tool{i}", f"tool{i}", f"https://{url_norm}", url_norm,
+                 "github.com", "x", name, 1, 1, 10))
+        conn.commit()
+        verdict = poisoning.assess_list(conn, name)
+        conn.close()
         self.assertTrue(any("autopromocja" in w for w in verdict["attention"]),
                         verdict["attention"])
 
