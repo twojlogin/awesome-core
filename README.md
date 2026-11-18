@@ -139,6 +139,8 @@ Quick path if you're short on time:
 ./awesome mentions nmap                            # in how many lists it appears
 ./awesome audit                                    # check for suspicious/poisoned lists
 ./awesome audit sindresorhus/awesome               # audit a single repository
+./awesome leaks                                    # scan for possible leaked secrets (local)
+./awesome leaks --readmes                          # also scan raw README files (offline)
 ./awesome lists                                    # top lists
 ./awesome info nmap                                # details + install hint
 ./awesome install nmap                             # install (git clone)
@@ -283,6 +285,15 @@ Notes:
 
 This is pattern-based filtering, not a guarantee. Treat descriptions as data.
 
+You can also scan locally for possible leaked secrets/tokens in descriptions and README files:
+
+```bash
+./awesome leaks
+./awesome leaks --readmes   # also scan raw README files (offline)
+```
+
+This is heuristic (masked results, no external reporting) — useful for awareness, not a security guarantee.
+
 ---
 
 ## Principle: no AI in the core
@@ -308,7 +319,7 @@ The catalog is built from **third-party repositories**, so malicious or low-qual
 ./awesome audit
 ```
 
-Signals include: many tools with zero stars, single-owner link farms, many dead links, very new repos with lots of tools, clones of other lists, and suspicious links/domains (typosquatting-like, IPs, punycode, etc.).
+Signals include: many tools with zero stars, single-owner link farms, self-promotion (lists pushing the same owner's repositories), many dead links, very new repos with lots of tools, clones of other lists, and suspicious links/domains (typosquatting-like, IPs, punycode, etc.).
 
 Important caveats:
 - **Not malware scanning of target repos.** It flags suspicious signals, not proof of malice.
