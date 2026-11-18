@@ -10,6 +10,7 @@ W raporcie sekret jest maskowany, żeby nie powielać go w logach/terminalu.
 """
 
 import re
+from pathlib import Path
 
 
 # (wzorzec, etykieta) — świadomie tylko formaty o wysokiej pewności,
@@ -38,6 +39,12 @@ def _mask(secret):
     return s[:6] + "…" + s[-4:]
 
 
+def _is_placeholder(secret):
+    """Odrzuca oczywiste przykłady/placeholdery z dokumentacji."""
+    up = str(secret).upper()
+    return "EXAMPLE" in up
+
+
 def scan_text(text):
     """Zwraca listę trafień [(etykieta, zamaskowana_próbka), ...]."""
     if not text:
@@ -47,7 +54,10 @@ def scan_text(text):
     seen = set()
     for pattern, label in _COMPILED:
         for match in pattern.finditer(text):
-            sample = _mask(match.group(0))
+            secret = match.group(0)
+            if _is_placeholder(secret):
+                continue
+            sample = _mask(secret)
             key = (label, sample)
             if key in seen:
                 continue
@@ -102,3 +112,40 @@ def scan(conn):
         pass
 
     return tools, hits
+
+
+def scan_readmes(readmes_dir):
+    """Skanuje surowe pliki README (*.md) w katalogu (lokalnie, offline).
+
+    Zwraca (liczba_plików, lista_trafień). Każde trafienie ma field='readme',
+    name wyprowadzone z nazwy pliku, a source ustawione na ścieżkę pliku.
+    To heurystyki — wyniki wymagają ręcznej weryfikacji.
+    """
+    path = Path(readmes_dir)
+    if not path.is_dir():
+        return 0, []
+    hits = []
+    seen = set()
+    files = 0
+    for md_path in sorted(path.glob("*.md")):
+        files += 1
+        try:
+            text = md_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        name = md_path.stem.replace("__", "/", 1)
+        source = str(md_path)
+        for kind, sample in scan_text(text):
+            key = (name, "readme", kind, sample, source)
+            if key in seen:
+                continue
+            seen.add(key)
+            hits.append({
+                "url": "",
+                "name": name,
+                "field": "readme",
+                "kind": kind,
+                "sample": sample,
+                "source": source,
+            })
+    return files, hits

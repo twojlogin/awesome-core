@@ -1047,19 +1047,41 @@ def cmd_untrusted():
         print(f"      {hit['url']}")
 
 
-def cmd_leaks():
+def cmd_leaks(args=None):
     """Lokalny skan pod kątem możliwych wycieków sekretów (tokeny, klucze API).
 
     Heurystyki: mogą być fałszywe alarmy i mogą czegoś nie wykryć. Wyniki
     wymagają ręcznej weryfikacji. Nic nie jest zgłaszane ani wysyłane —
     raport służy tylko do lokalnego sprawdzenia.
     """
+    args = args or []
     from core import leaks, store
+
+    scan_readmes_flag = "--readmes" in args
+    readmes_path = None
+    if scan_readmes_flag:
+        idx = args.index("--readmes")
+        if idx + 1 < len(args) and not str(args[idx + 1]).startswith("-"):
+            readmes_path = args[idx + 1]
+        else:
+            for candidate in (BASE_DIR / "offline-db" / "data" / "readmes",
+                              BASE_DIR / "data" / "readmes"):
+                if candidate.is_dir():
+                    readmes_path = str(candidate)
+                    break
+            if readmes_path is None:
+                readmes_path = str(BASE_DIR / "offline-db" / "data" / "readmes")
 
     conn = store.connect(read_only=True)
     tools, hits = leaks.scan(conn)
     conn.close()
-    print(f"\nSkan {tools:,} narzędzi pod kątem możliwych wycieków sekretów")
+    print(f"\nSkan bazy: {tools:,} narzędzi pod kątem możliwych wycieków sekretów")
+
+    if scan_readmes_flag:
+        files, r_hits = leaks.scan_readmes(readmes_path)
+        print(f"Skan README: {files} plików ({readmes_path})")
+        hits = list(hits) + list(r_hits)
+
     if not hits:
         print("  Czysto: nie znaleziono znanych formatów tokenów/kluczy.")
         print("  (to heurystyki — brak trafień nie gwarantuje braku wycieków)")
@@ -1067,7 +1089,7 @@ def cmd_leaks():
     print(f"  Podejrzane trafienia: {len(hits)} (wymaga ręcznej weryfikacji)")
     print("  Sekrety w raporcie są maskowane; nic nie jest wysyłane automatycznie.")
     for hit in hits[:40]:
-        where = hit["source"] or hit["url"]
+        where = hit["source"] or hit["url"] or "-"
         print(f"  - {hit['name'][:34]:34} [{hit['kind']}] {hit['field']}")
         print(f"      {where}  próbka: {hit['sample']}")
     if len(hits) > 40:
@@ -1355,7 +1377,7 @@ def main():
     elif cmd in {"untrusted", "trust"}:
         cmd_untrusted()
     elif cmd in {"leaks", "secrets", "wycieki"}:
-        cmd_leaks()
+        cmd_leaks(args)
     elif cmd == "validate":
         cmd_validate(
             int(args[args.index("--limit") + 1]) if "--limit" in args else None,

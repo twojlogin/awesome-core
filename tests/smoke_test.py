@@ -1701,6 +1701,10 @@ class TestLeaks(unittest.TestCase):
         self.assertEqual(leaks.scan_text("AWS key management best practices"), [])
         self.assertEqual(leaks.scan_text("example: glpat-your-token-here"), [])
 
+    def test_scan_text_ignores_documentation_example(self):
+        # Kanoniczny przykładowy klucz AWS z dokumentacji — nie powinien być flagowany.
+        self.assertEqual(leaks.scan_text("aws_access_key_id=AKIAIOSFODNN7EXAMPLE"), [])
+
     def test_scan_reports_leaked_secret_in_db(self):
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
@@ -1720,3 +1724,14 @@ class TestLeaks(unittest.TestCase):
         self.assertEqual(tools, 1)
         self.assertTrue(any(h["kind"] == "GitHub token (classic PAT)" for h in hits))
         self.assertTrue(all(secret != h["sample"] for h in hits))
+
+    def test_scan_readmes_finds_secret_in_markdown(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "owner__repo.md"
+            secret = "ghp_" + "AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRr"
+            p.write_text(f"example config:\nTOKEN={secret}\n", encoding="utf-8")
+            files, hits = leaks.scan_readmes(td)
+            self.assertEqual(files, 1)
+            self.assertTrue(any(h["kind"] == "GitHub token (classic PAT)" for h in hits))
+            self.assertTrue(all(h["field"] == "readme" for h in hits))
+            self.assertTrue(all(secret != h["sample"] for h in hits))
