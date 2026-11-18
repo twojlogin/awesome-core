@@ -16,7 +16,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from core import aliases, api, builder, clones, doctor, fetcher, langmap, md, mcp, parser, poisoning, scoring, store, untrusted  # noqa: E402
+from core import aliases, api, builder, clones, doctor, fetcher, langmap, leaks, md, mcp, parser, poisoning, scoring, store, untrusted  # noqa: E402
 from core.builder import build  # noqa: E402
 from core.database import AwesomeDB  # noqa: E402
 from core import status as status_mod  # noqa: E402
@@ -1668,3 +1668,46 @@ class TestAtomicBuildPreservesCache(unittest.TestCase):
         self.assertEqual(st["fail_count"], 2)
         self.assertEqual(st["retry_after_at"], "2099-01-01T00:00:00Z")
         conn.close()
+
+
+class TestLeaks(unittest.TestCase):
+    """Wykrywanie możliwych wycieków sekretów (lokalny skan, bez zgłoszeń)."""
+
+    def test_scan_text_detects_github_pat_and_masks(self):
+        secret = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        hits = leaks.scan_text(f"token={secret} in readme")
+        self.assertTrue(hits)
+        kinds = [k for k, _ in hits]
+        self.assertIn("GitHub token (classic PAT)", kinds)
+        sample = [s for k, s in hits if k == "GitHub token (classic PAT)"][0]
+        self.assertNotEqual(sample, secret)
+        self.assertIn("…", sample)
+
+    def test_scan_text_detects_private_key_block(self):
+        text = "-----BEGIN RSA PRIVATE KEY-----\nMIIBogIBAAJBALRi..."
+        hits = leaks.scan_text(text)
+        self.assertTrue(any(k == "Private key block" for k, _ in hits))
+
+    def test_scan_text_ignores_benign_text(self):
+        self.assertEqual(leaks.scan_text("set GITHUB_TOKEN in env and use gh auth"), [])
+        self.assertEqual(leaks.scan_text("AWS key management best practices"), [])
+
+    def test_scan_reports_leaked_secret_in_db(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "CREATE TABLE tools (name TEXT, description TEXT, url_norm TEXT, source_repo TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE tool_mentions (url_norm TEXT, name TEXT, source_repo TEXT, description TEXT)"
+        )
+        secret = "ghp_" + "Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3h2"
+        conn.execute(
+            "INSERT INTO tools VALUES (?, ?, ?, ?)",
+            ("demo", f"use token {secret}", "github.com/a/b", "x/y"),
+        )
+        tools, hits = leaks.scan(conn)
+        conn.close()
+        self.assertEqual(tools, 1)
+        self.assertTrue(any(h["kind"] == "GitHub token (classic PAT)" for h in hits))
+        self.assertTrue(all(secret != h["sample"] for h in hits))
