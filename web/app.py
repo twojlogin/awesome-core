@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from flask import (
-    Flask, abort, flash, redirect, render_template, request, url_for,
+    Flask, abort, flash, make_response, redirect, render_template, request, url_for,
 )
 
 
@@ -23,6 +23,7 @@ from core.database import AwesomeDB  # noqa: E402
 from core.shortlist import Shortlist  # noqa: E402
 from core.tools_db import ToolsDB  # noqa: E402
 from core.trust import assess_repo  # noqa: E402
+from web.i18n import normalize_lang, translate  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("AWESOME_SECRET_KEY") or os.urandom(32)
@@ -115,6 +116,36 @@ def find_tool(needle):
     if tool:
         return tool
     return tools.tool_by_name(needle)
+
+
+
+def _ui_lang():
+    lang = request.args.get("lang") or request.cookies.get("ui_lang") or "pl"
+    return normalize_lang(lang)
+
+
+def _lang_switch_url(target_lang):
+    args = request.args.to_dict(flat=True)
+    args["lang"] = target_lang
+    endpoint = request.endpoint or "index"
+    return url_for(endpoint, **(request.view_args or {}), **args)
+
+
+@app.context_processor
+def inject_i18n():
+    lang = _ui_lang()
+    return {
+        "lang": lang,
+        "t": (lambda key, **kwargs: translate(lang, key, **kwargs)),
+        "lang_switch_url": _lang_switch_url,
+    }
+
+
+@app.after_request
+def persist_ui_lang(response):
+    if "lang" in request.args:
+        response.set_cookie("ui_lang", _ui_lang(), max_age=60 * 60 * 24 * 365, samesite="Lax")
+    return response
 
 
 @app.route("/")

@@ -740,13 +740,15 @@ class TestDocsAreTruthful(unittest.TestCase):
 
     def test_readme_stan_block_exists(self):
         """README ma blok STAN i mówi szczerze, że liczby zależą od
-        pobranych list — nie ma tu sztywnych, „wpisanych na sztywno”
-        wartości, które by się nie zgadzały z bazą."""
+        pobranych list — nie ma tu sztywnych wartości."""
         readme = (Path(__file__).parent.parent / "README.md").read_text(
             encoding="utf-8")
         self.assertIn("<!-- STAN:", readme)
         block = readme.split("<!-- STAN:")[1].split("-->")[0]
-        self.assertIn("zależne od pobranych list", block)
+        self.assertTrue(
+            ("zależne od pobranych list" in block) or ("depend on downloaded lists" in block),
+            "blok STAN musi mówić, że liczby zależą od pobranych list",
+        )
         self.assertNotIn("187 666", block)
         self.assertNotIn("216 383", block)
         self.assertNotIn("1 032", block)
