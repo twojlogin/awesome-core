@@ -1047,6 +1047,33 @@ def cmd_untrusted():
         print(f"      {hit['url']}")
 
 
+def cmd_leaks():
+    """Lokalny skan pod kątem możliwych wycieków sekretów (tokeny, klucze API).
+
+    Heurystyki: mogą być fałszywe alarmy i mogą czegoś nie wykryć. Wyniki
+    wymagają ręcznej weryfikacji. Nic nie jest zgłaszane ani wysyłane —
+    raport służy tylko do lokalnego sprawdzenia.
+    """
+    from core import leaks, store
+
+    conn = store.connect(read_only=True)
+    tools, hits = leaks.scan(conn)
+    conn.close()
+    print(f"\nSkan {tools:,} narzędzi pod kątem możliwych wycieków sekretów")
+    if not hits:
+        print("  Czysto: nie znaleziono znanych formatów tokenów/kluczy.")
+        print("  (to heurystyki — brak trafień nie gwarantuje braku wycieków)")
+        return
+    print(f"  Podejrzane trafienia: {len(hits)} (wymaga ręcznej weryfikacji)")
+    print("  Sekrety w raporcie są maskowane; nic nie jest wysyłane automatycznie.")
+    for hit in hits[:40]:
+        where = hit["source"] or hit["url"]
+        print(f"  - {hit['name'][:34]:34} [{hit['kind']}] {hit['field']}")
+        print(f"      {where}  próbka: {hit['sample']}")
+    if len(hits) > 40:
+        print(f"  ... i {len(hits) - 40} kolejnych")
+
+
 def cmd_export(fmt, out=None, limit=None):
     from core import store
 
@@ -1327,6 +1354,8 @@ def main():
         cmd_selfcheck(tools_db)
     elif cmd in {"untrusted", "trust"}:
         cmd_untrusted()
+    elif cmd in {"leaks", "secrets", "wycieki"}:
+        cmd_leaks()
     elif cmd == "validate":
         cmd_validate(
             int(args[args.index("--limit") + 1]) if "--limit" in args else None,
