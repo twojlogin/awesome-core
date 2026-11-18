@@ -1122,6 +1122,86 @@ class TestPoisoningDetection(unittest.TestCase):
         self.assertIn("automatyczny zrzut gwiazdek (star dump)", verdict["info"])
         self.assertEqual(verdict["status"], "warto sprawdzić")
 
+    def test_pure_monorepo_has_no_owner_diversity_warning(self):
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        name = "acme/awesome-acme"
+        conn.execute(
+            "INSERT OR REPLACE INTO repos (full_name, owner, name, url, stars,"
+            " description, unique_tool_count) VALUES (?,?,?,?,?,?,?)",
+            (name, "acme", "awesome-acme", f"https://github.com/{name}", 50, "", 20))
+        for i in range(20):
+            url_norm = f"github.com/acme/awesome-acme/blob/main/doc{i}.md"
+            conn.execute(
+                "INSERT OR REPLACE INTO tools (name, name_norm, url, url_norm,"
+                " host, description, source_repo, alive, lists_count, score)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (f"tool{i}", f"tool{i}", f"https://{url_norm}", url_norm,
+                 "github.com", "x", name, 1, 1, 10))
+        conn.commit()
+        verdict = poisoning.assess_list(conn, name)
+        conn.close()
+        self.assertFalse(any("różnych właścicieli" in w for w in verdict["attention"]),
+                         verdict["attention"])
+        self.assertFalse(any("do jednego właściciela" in w for w in verdict["attention"]),
+                         verdict["attention"])
+
+    def test_external_diversity_excludes_internal_repo_links(self):
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        name = "acme/awesome-acme"
+        conn.execute(
+            "INSERT OR REPLACE INTO repos (full_name, owner, name, url, stars,"
+            " description, unique_tool_count) VALUES (?,?,?,?,?,?,?)",
+            (name, "acme", "awesome-acme", f"https://github.com/{name}", 50, "", 15))
+        for i in range(15):
+            if i < 5:
+                url_norm = f"github.com/acme/awesome-acme/blob/main/doc{i}.md"
+            else:
+                url_norm = f"github.com/ext/project{i}"
+            conn.execute(
+                "INSERT OR REPLACE INTO tools (name, name_norm, url, url_norm,"
+                " host, description, source_repo, alive, lists_count, score)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (f"tool{i}", f"tool{i}", f"https://{url_norm}", url_norm,
+                 "github.com", "x", name, 1, 1, 10))
+        conn.commit()
+        verdict = poisoning.assess_list(conn, name)
+        conn.close()
+        self.assertTrue(any("10 zewnętrznych linków GitHub do jednego właściciela"
+                            in w for w in verdict["attention"]),
+                        verdict["attention"])
+
+    def test_multi_list_farm_is_labeled_in_info(self):
+        from core import store
+
+        conn = store.connect(self.data_dir)
+        owner = "uhub"
+        names = [f"{owner}/awesome-a", f"{owner}/awesome-b", f"{owner}/awesome-c"]
+        for idx, name in enumerate(names):
+            conn.execute(
+                "INSERT OR REPLACE INTO repos (full_name, owner, name, url, stars,"
+                " description, unique_tool_count) VALUES (?,?,?,?,?,?,?)",
+                (name, owner, name.split("/")[1], f"https://github.com/{name}", 1, "", 501))
+            for i in range(501):
+                tool_name = f"{idx}-{i}"
+                url_norm = f"github.com/other{idx}{i}/t{i}"
+                conn.execute(
+                    "INSERT OR REPLACE INTO tools (name, name_norm, url, url_norm,"
+                    " host, description, source_repo, alive, lists_count, score)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (tool_name, tool_name.lower(), f"https://{url_norm}", url_norm,
+                     "github.com", "x", name, 1, 1, 10))
+        conn.commit()
+        verdict = poisoning.assess_list(conn, names[0])
+        conn.close()
+        expected = "masowy generator list (farma 3 list tego samego właściciela o niskiej reputacji)"
+        self.assertIn(expected, verdict["info"])
+        self.assertFalse(any(expected in w for w in verdict["attention"]),
+                         verdict["attention"])
+
     def test_lookalike_urls_are_flagged(self):
         for url, expected in (
             ("github.com@evil.tld/x", "@"),
