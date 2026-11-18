@@ -18,7 +18,7 @@ DATA_DIR = BASE_DIR / "data"
 DB_FILE = "awesome.db"
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 SCHEMA = """
@@ -154,6 +154,19 @@ CREATE TABLE IF NOT EXISTS list_fetch_state (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fetch_state_retry ON list_fetch_state(retry_after_at);
+
+CREATE TABLE IF NOT EXISTS suspected_farms (
+    owner          TEXT PRIMARY KEY,
+    first_seen_at  TEXT NOT NULL DEFAULT '',
+    last_seen_at   TEXT NOT NULL DEFAULT '',
+    repo_count     INTEGER NOT NULL DEFAULT 0,
+    median_stars   REAL NOT NULL DEFAULT 0,
+    sample_repos   TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'active',
+    vanished_at    TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_suspected_farms_status ON suspected_farms(status);
 """
 
 
@@ -617,4 +630,44 @@ def bump_list_fetch_failure(conn, full_name, *, kind='list', status='error', rea
     set_list_fetch_state(conn, full_name, kind=kind, status=status, fail_count=fails,
                          retry_after_at=retry_str, reason=reason, commit=commit)
     return fails
+
+
+
+
+# --- suspected SEO farms ---
+
+def upsert_suspected_farm(conn, owner, repo_count, median_stars, sample_repos='',
+                          status='active', commit=True):
+    owner = (owner or '').lower().strip()
+    if not owner:
+        return
+    now = _now()
+    vanished_at = now if status == 'vanished' else ''
+    conn.execute(
+        "INSERT INTO suspected_farms (owner, first_seen_at, last_seen_at, repo_count, median_stars, sample_repos, status, vanished_at)"
+        " VALUES (?,?,?,?,?,?,?,?)"
+        " ON CONFLICT(owner) DO UPDATE SET "
+        " last_seen_at=excluded.last_seen_at,"
+        " repo_count=excluded.repo_count,"
+        " median_stars=excluded.median_stars,"
+        " sample_repos=CASE WHEN excluded.sample_repos!='' THEN excluded.sample_repos ELSE suspected_farms.sample_repos END,"
+        " status=excluded.status,"
+        " vanished_at=CASE WHEN excluded.status='vanished' THEN excluded.vanished_at ELSE '' END,"
+        " first_seen_at=CASE WHEN suspected_farms.first_seen_at='' THEN excluded.first_seen_at ELSE suspected_farms.first_seen_at END",
+        (owner, now, now, int(repo_count or 0), float(median_stars or 0),
+         sample_repos or '', status or 'active', vanished_at),
+    )
+    if commit:
+        conn.commit()
+
+
+def suspected_farm_owners(conn, active_only=True):
+    try:
+        if active_only:
+            rows = conn.execute("SELECT owner FROM suspected_farms WHERE status='active'").fetchall()
+        else:
+            rows = conn.execute("SELECT owner FROM suspected_farms").fetchall()
+        return {r['owner'].lower() for r in rows}
+    except Exception:
+        return set()
 
