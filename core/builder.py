@@ -84,12 +84,16 @@ def _full_name_from_file(stem):
     return f"{owner}/{name}"
 
 
-def _carry_over(conn):
-    """Zachowuje alive / alive_reason / first_seen z poprzedniego buildu."""
+def _carry_over(conn, source_schema=None):
+    """Zachowuje alive / alive_reason / first_seen z poprzedniego buildu.
+
+    source_schema: np. 'old_db' gdy odczyt z podłączonej starej bazy.
+    """
     carried = {}
+    table = f"{source_schema}.tools" if source_schema else "tools"
     try:
         rows = conn.execute(
-            "SELECT url_norm, alive, alive_reason, first_seen FROM tools"
+            f"SELECT url_norm, alive, alive_reason, first_seen FROM {table}"
         ).fetchall()
     except Exception:
         return carried
@@ -101,6 +105,71 @@ def _carry_over(conn):
             row["first_seen"] or now,
         )
     return carried
+
+
+def _table_columns(conn, table, schema=None):
+    name = f"{schema}.{table}" if schema else table
+    try:
+        return [r[1] for r in conn.execute(f"PRAGMA {schema}.table_info({table})" if schema else f"PRAGMA table_info({table})")]
+    except Exception:
+        return []
+
+
+def _copy_table(conn, table, old_schema="old_db"):
+    """Kopiuje wiersze po wspólnych kolumnach (odporne na różnice schematu)."""
+    try:
+        old_cols = set(_table_columns(conn, table, old_schema))
+        new_cols = set(_table_columns(conn, table, None))
+    except Exception:
+        return 0
+    if not old_cols or not new_cols:
+        return 0
+    cols = [c for c in _table_columns(conn, table, None) if c in old_cols]
+    if not cols:
+        return 0
+    col_list = ",".join(cols)
+    try:
+        conn.execute(
+            f"INSERT OR REPLACE INTO {table} ({col_list}) "
+            f"SELECT {col_list} FROM {old_schema}.{table}"
+        )
+        return conn.execute(f"SELECT changes()").fetchone()[0]
+    except Exception:
+        return 0
+
+
+def _preserve_persistent_state(conn, old_db_path):
+    """Przenosi metadane/cache ze starej bazy do tymczasowej (atomowy build).
+
+    Zachowuje: tool_repo_meta (enrich), metadane list w repos (backfill),
+    list_fetch_state (retry_after), meta (last_enrich/backfill itp.).
+    """
+    if not old_db_path or not Path(old_db_path).exists():
+        return {}
+    try:
+        conn.execute("ATTACH DATABASE ? AS old_db", (str(old_db_path),))
+    except Exception:
+        return {}
+    stats = {}
+    try:
+        # meta i stany fetch/enrich/backfill
+        stats["meta"] = _copy_table(conn, "meta")
+        stats["tool_repo_meta"] = _copy_table(conn, "tool_repo_meta")
+        stats["list_fetch_state"] = _copy_table(conn, "list_fetch_state")
+        stats["suspected_farms"] = _copy_table(conn, "suspected_farms")
+        # metadane list (backfill) - wstaw stare wiersze, sync_repos je uzupełni
+        stats["repos"] = _copy_table(conn, "repos")
+        # alive/first_seen z poprzednich tools do carry-over
+        carried = _carry_over(conn, source_schema="old_db")
+        conn.commit()
+    except Exception:
+        carried = {}
+    finally:
+        try:
+            conn.execute("DETACH DATABASE old_db")
+        except Exception:
+            pass
+    return {"copied": stats, "carried": carried}
 
 
 def _best_mention(existing, candidate):
@@ -174,7 +243,15 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
 
     conn = _open_build_conn(data_dir, tmp_path)
     try:
-        carried = _carry_over(conn)
+        preserved = _preserve_persistent_state(conn, final_path) if final_path.exists() else {}
+        carried = preserved.get("carried") or _carry_over(conn)
+        copied = preserved.get("copied") or {}
+        if copied:
+            _log(verbose, f"  zachowano cache/metadane ze starej bazy: "
+                 f"tool_repo_meta={copied.get('tool_repo_meta',0)}, "
+                 f"meta={copied.get('meta',0)}, "
+                 f"repos={copied.get('repos',0)}, "
+                 f"list_fetch_state={copied.get('list_fetch_state',0)}")
         readme_root = Path(readme_dir) if readme_dir else README_DIR
 
         _log(verbose, "Synchronizacja list...")
@@ -249,6 +326,38 @@ def build(data_dir=None, verbose=True, export=None, export_limit=None,
         started_quality = time.perf_counter()
         repo_quality, owner_info = _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried)
         _log(verbose, f"  jakość list: {time.perf_counter() - started_quality:.1f}s")
+
+        # rejestr farm SEO (suspected_farms) na podstawie wykrytych ownerów
+        try:
+            detected = set()
+            for owner, oi in owner_info.items():
+                if oi.get("farm"):
+                    detected.add(owner)
+                    sample = ";".join(
+                        [fn for fn, r in repos.items()
+                         if (r.get("owner") or fn.split("/")[0]).lower() == owner][:5]
+                    )
+                    store.upsert_suspected_farm(
+                        conn, owner,
+                        repo_count=oi.get("count", 0),
+                        median_stars=oi.get("median_stars", 0),
+                        sample_repos=sample,
+                        status="active",
+                        commit=False,
+                    )
+            # oznacz zniknięte wcześniej aktywne farmy
+            try:
+                prev_active = store.suspected_farm_owners(conn, active_only=True)
+                for owner in prev_active - detected:
+                    store.upsert_suspected_farm(conn, owner, repo_count=0, median_stars=0,
+                                                sample_repos="", status="vanished", commit=False)
+            except Exception:
+                pass
+            conn.commit()
+            if detected:
+                _log(verbose, f"  suspected_farms: {len(detected)} aktywnych")
+        except Exception:
+            pass
 
         tool_meta = store.tool_meta_map(conn)
         if tool_meta:
@@ -439,30 +548,47 @@ def _build_tool_rows(best, all_mentions, repos, repo_quality, carried, tool_meta
     for identity, primary in best.items():
         meta = _tool_meta_for(identity, tool_meta)
         mentions = all_mentions[identity]
-        quality_sum = 0.0
-        stars_sum = 0
+
+        # zbierz unikalne repozytoria (nie-klony) i rozdziel farmy SEO od reszty
         seen_repos = set()
         for mention in mentions:
             repo = mention["repo"]
             if repo in seen_repos or repo in clone_of:
                 continue
             seen_repos.add(repo)
-            q = repo_quality.get(repo, 0.0)
-            owner = (repo.split("/")[0] if "/" in repo else "").lower()
-            oi = owner_info.get(owner) or {}
-            if oi.get("farm"):
-                # obniż wagę farm jednego autora także w consensus
-                q *= float(oi.get("multiplier", 0.78) or 0.78)
-            quality_sum += q
-            stars_sum += int(repos.get(repo, {}).get("stars", 0) or 0)
         for mention in mentions:
             seen_repos.add(mention["repo"])
 
         independent = [repo for repo in seen_repos if repo not in clone_of]
         clones_skipped = len(seen_repos) - len(independent)
-        lists_count = len(independent)
+
+        farm_repos = []
+        non_farm_repos = []
+        for repo in independent:
+            owner = (repo.split("/")[0] if "/" in repo else "").lower()
+            oi = owner_info.get(owner) or {}
+            if oi.get("farm"):
+                farm_repos.append(repo)
+            else:
+                non_farm_repos.append(repo)
+
+        # Narzędzia wyłącznie na listach z suspected_farms: brak podbicia consensus/lists_count.
+        # Jeśli potwierdzi je wiarygodna lista spoza farmy — liczymy tylko listy spoza farm.
+        if non_farm_repos:
+            contrib_repos = non_farm_repos
+        else:
+            contrib_repos = []
+
+        quality_sum = 0.0
+        stars_sum = 0
+        for repo in contrib_repos:
+            q = repo_quality.get(repo, 0.0)
+            quality_sum += q
+            stars_sum += int(repos.get(repo, {}).get("stars", 0) or 0)
+
+        lists_count = len(contrib_repos)
         owners_count = len({
-            repo.split("/")[0].lower() for repo in independent
+            repo.split("/")[0].lower() for repo in contrib_repos
         })
         consensus = scoring.consensus(lists_count, owners_count, quality_sum)
         best_quality = max(

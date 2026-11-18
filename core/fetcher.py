@@ -155,6 +155,9 @@ def download(topic="awesome-list", wide=True, refresh=False, sort="stars",
     new = skipped = missing = deferred = 0
     downloaded = set()
     stop = False
+    # wykrywanie farm SEO w trakcie jednego przebiegu search
+    owner_seen = {}
+    owner_farm = set()
 
     try:
         for query in queries:
@@ -184,6 +187,34 @@ def download(topic="awesome-list", wide=True, refresh=False, sort="stars",
                     if not full or "/" not in full:
                         continue
                     owner, name = full.split("/", 1)
+                    owner_l = owner.lower()
+                    stars_item = int(item.get("stargazers_count") or 0)
+                    info = owner_seen.setdefault(owner_l, {"total": 0, "low": 0, "samples": []})
+                    info["total"] += 1
+                    if stars_item < 30:
+                        info["low"] += 1
+                    if len(info["samples"]) < 5:
+                        info["samples"].append(full)
+                    if owner_l not in owner_farm and info["low"] >= 10 and info["total"] >= 10:
+                        owner_farm.add(owner_l)
+                        if conn is not None:
+                            try:
+                                store.upsert_suspected_farm(
+                                    conn, owner_l,
+                                    repo_count=info["total"],
+                                    median_stars=stars_item,
+                                    sample_repos=";".join(info["samples"]),
+                                    status="active",
+                                    commit=False,
+                                )
+                                conn.commit()
+                            except Exception:
+                                pass
+                        if verbose:
+                            print(f"  [!] wykryto farmę SEO ownera {owner_l} (>=10 repo <30★) — pomijam dalsze", flush=True)
+                    if owner_l in owner_farm:
+                        deferred += 1
+                        continue
                     target = README_DIR / f"{owner}__{name}.md"
                     if target.exists() and not refresh:
                         skipped += 1

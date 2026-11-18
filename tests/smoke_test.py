@@ -1566,3 +1566,77 @@ class TestFetchRetryState(unittest.TestCase):
         self.assertEqual(row['status'], 'missing')
         self.assertEqual(row['fail_count'], 1)
         self.assertTrue(row['retry_after_at'])
+
+
+class TestAtomicBuildPreservesCache(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.readme_dir = self.tmp / "offline-db" / "data" / "readmes"
+        self.readme_dir.mkdir(parents=True)
+        self.index_file = self.tmp / "offline-db" / "data" / "index.json"
+        self.data_dir = self.tmp / "data"
+        self.data_dir.mkdir()
+        # prosta lista z narzędziami github
+        readme = "# Awesome\n\n## Tools\n\n- [tool1](https://github.com/acme/tool1) - one\n- [tool2](https://github.com/acme/tool2) - two\n"
+        (self.readme_dir / "acme__awesome.md").write_text(readme, encoding="utf-8")
+        self.index_file.write_text(json.dumps({
+            "acme/awesome": {"owner": "acme", "name": "awesome", "stars": 100, "language": "Markdown"}
+        }), encoding="utf-8")
+        build(
+            data_dir=self.data_dir, verbose=False,
+            index_file=self.index_file, readme_dir=self.readme_dir,
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_preserves_enrich_backfill_fetch_state_and_meta(self):
+        conn = store.connect(self.data_dir)
+        # metadane enrich (żywe i martwe repo narzędzi)
+        store.set_meta(conn, "last_enrich", "2026-01-02T03:04:05Z", commit=False)
+        store.set_meta(conn, "last_backfill", "2026-01-01T00:00:00Z", commit=False)
+        conn.executemany(
+            "INSERT OR REPLACE INTO tool_repo_meta (full_name,url,stars,forks,language,archived,pushed_at,created_at,topics,status,fetched_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            [
+                ("acme/tool1", "https://github.com/acme/tool1", 123, 1, "Go", 0, "2026-01-01", "2020-01-01", "", 0, "2026-01-02T00:00:00Z"),
+                ("acme/tool2", "https://github.com/acme/tool2", 0, 0, "", 0, "", "", "", 1, "2026-01-02T00:00:00Z"),
+            ],
+        )
+        # metadane listy z backfill
+        conn.execute(
+            "UPDATE repos SET stars=?, language=?, pushed_at=?, description=? WHERE full_name=?",
+            (777, "Python", "2026-03-01T00:00:00Z", "backfilled desc", "acme/awesome"),
+        )
+        # stan retry_after
+        store.set_list_fetch_state(
+            conn, "dead/repo", kind="list", status="404", fail_count=2,
+            retry_after_at="2099-01-01T00:00:00Z", reason="missing", commit=False,
+        )
+        conn.commit()
+        conn.close()
+
+        # pełny build atomowy nie może skasować powyższych danych
+        build(
+            data_dir=self.data_dir, verbose=False,
+            index_file=self.index_file, readme_dir=self.readme_dir,
+        )
+
+        conn = store.connect(self.data_dir)
+        self.assertEqual(store.get_meta(conn, "last_enrich"), "2026-01-02T03:04:05Z")
+        self.assertEqual(store.get_meta(conn, "last_backfill"), "2026-01-01T00:00:00Z")
+        rows = {r["full_name"]: dict(r) for r in conn.execute("SELECT * FROM tool_repo_meta").fetchall()}
+        self.assertIn("acme/tool1", rows)
+        self.assertIn("acme/tool2", rows)
+        self.assertEqual(rows["acme/tool1"]["stars"], 123)
+        self.assertEqual(rows["acme/tool2"]["status"], 1)  # martwe
+        repo = conn.execute("SELECT stars, language, pushed_at, description FROM repos WHERE full_name='acme/awesome'").fetchone()
+        self.assertEqual(repo["stars"], 777)
+        self.assertEqual(repo["language"], "Python")
+        self.assertEqual(repo["pushed_at"], "2026-03-01T00:00:00Z")
+        st = conn.execute("SELECT status, fail_count, retry_after_at FROM list_fetch_state WHERE full_name='dead/repo'").fetchone()
+        self.assertIsNotNone(st)
+        self.assertEqual(st["status"], "404")
+        self.assertEqual(st["fail_count"], 2)
+        self.assertEqual(st["retry_after_at"], "2099-01-01T00:00:00Z")
+        conn.close()
