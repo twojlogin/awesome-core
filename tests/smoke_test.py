@@ -1688,9 +1688,18 @@ class TestLeaks(unittest.TestCase):
         hits = leaks.scan_text(text)
         self.assertTrue(any(k == "Private key block" for k, _ in hits))
 
+    def test_scan_text_detects_gitlab_and_npm_tokens(self):
+        glpat = "glpat-" + "A1b2C3d4E5f6G7h8I9j0"
+        npm = "npm_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        hits = leaks.scan_text(f"{glpat} {npm}")
+        kinds = [k for k, _ in hits]
+        self.assertIn("GitLab token (PAT)", kinds)
+        self.assertIn("npm access token", kinds)
+
     def test_scan_text_ignores_benign_text(self):
         self.assertEqual(leaks.scan_text("set GITHUB_TOKEN in env and use gh auth"), [])
         self.assertEqual(leaks.scan_text("AWS key management best practices"), [])
+        self.assertEqual(leaks.scan_text("example: glpat-your-token-here"), [])
 
     def test_scan_reports_leaked_secret_in_db(self):
         conn = sqlite3.connect(":memory:")
