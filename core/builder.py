@@ -458,8 +458,12 @@ def _detect_clones(all_mentions, repos, threshold=None, min_shared=None, min_siz
 
 
 def _owner_farm_info(repos):
-    """Wykrywa farmy jednego autora: wielu list od tego samego ownera
-    przy niskiej medianie gwiazdek list."""
+    """Wykrywa farmy SEO i masowych agregatorów jednego autora.
+
+    - farma niskogwiazdkowa: >=8 list i mediana gwiazdek <150
+    - masowy agregator: bardzo wiele list od jednego ownera (np. uhub/awesome-*),
+      nawet przy wyższych gwiazdkach — obniżamy zaufanie i wpływ na consensus.
+    """
     by_owner = defaultdict(list)
     for full_name, repo in repos.items():
         owner = (repo.get("owner") or (full_name.split("/")[0] if "/" in full_name else "")).lower()
@@ -473,11 +477,21 @@ def _owner_farm_info(repos):
         mid = len(vals) // 2
         median = vals[mid] if len(vals) % 2 else (vals[mid - 1] + vals[mid]) / 2.0
         is_farm = count >= 8 and median < 150
+        # masowy agregator: dużo podobnych/automatycznych list od jednego autora
+        is_mass_aggregator = (count >= 15) or (count >= 10 and median < 250)
+        multiplier = 1.0
+        if is_farm:
+            multiplier = min(multiplier, 0.78)
+        if is_mass_aggregator:
+            multiplier = min(multiplier, 0.72)
         info[owner] = {
             "count": count,
             "median_stars": median,
-            "farm": is_farm,
-            "multiplier": 0.78 if is_farm else 1.0,
+            "farm": is_farm or is_mass_aggregator,
+            "low_star_farm": is_farm,
+            "mass_aggregator": is_mass_aggregator,
+            "multiplier": multiplier,
+            "aggregator_multiplier": 0.72 if is_mass_aggregator else 1.0,
         }
     return info
 
@@ -516,9 +530,12 @@ def _compute_repo_quality(stats_by_repo, repos, all_mentions, best, carried):
         stats["projects"] = (projects / seen) if seen else None
         owner = (repo.get("owner") or (full_name.split("/")[0] if "/" in full_name else "")).lower()
         oi = owner_info.get(owner) or {}
-        if oi.get("farm"):
+        if oi.get("farm") or oi.get("low_star_farm"):
             stats["owner_farm"] = True
             stats["owner_farm_multiplier"] = oi.get("multiplier", 0.78)
+        if oi.get("mass_aggregator"):
+            stats["owner_mass_aggregator"] = True
+            stats["owner_aggregator_multiplier"] = oi.get("aggregator_multiplier", 0.72)
         quality[full_name] = scoring.repo_quality(stats)["quality"]
     return quality, owner_info
 
