@@ -128,18 +128,27 @@ def assess_list(conn, full_name):
         attention.append(f"tylko {owners} różnych właścicieli dla {github_tools} linków")
 
     list_owner = full_name.split("/")[0].lower() if "/" in full_name else ""
-    self_count = 0
+    list_full = full_name.lower()
     if github_tools >= 10 and list_owner:
-        self_count = conn.execute(
+        same_owner = conn.execute(
             "SELECT COUNT(*) c FROM tools WHERE source_repo = ? "
             "AND url_norm LIKE ?",
             (full_name, f"github.com/{list_owner}/%"),
         ).fetchone()["c"]
-        if self_count >= 10 and self_count / github_tools >= 0.5:
-            pct = round(self_count / github_tools * 100)
+        same_repo = conn.execute(
+            "SELECT COUNT(*) c FROM tools WHERE source_repo = ? "
+            "AND (lower(url_norm) = ? OR lower(url_norm) LIKE ?)",
+            (full_name, f"github.com/{list_full}", f"github.com/{list_full}/%"),
+        ).fetchone()["c"]
+        external_self = same_owner - same_repo
+        if external_self >= 10 and external_self / github_tools >= 0.5:
+            pct = round(external_self / github_tools * 100)
             attention.append(
-                f"autopromocja: {self_count} z {github_tools} linków GitHub "
-                f"({pct}%) prowadzi do repozytoriów właściciela listy ({list_owner})")
+                f"autopromocja: {external_self} z {github_tools} linków GitHub "
+                f"({pct}%) prowadzi do innych repozytoriów właściciela listy ({list_owner})")
+        if same_repo >= 10 and same_repo * 2 > github_tools:
+            info.append(
+                "struktura monorepo / linki wewnętrzne do plików tego samego repozytorium")
 
     if checked >= 20 and dead / checked > 0.4:
         attention.append(f"{dead} z {checked} sprawdzonych linków nie żyje "
@@ -151,6 +160,9 @@ def assess_list(conn, full_name):
         info.append(f"kopia listy {repo['clone_of']}")
     if repo.get("is_fork") in {True, "true", "1"} and repo.get("parent"):
         info.append(f"fork listy {repo['parent']}")
+    name_blob = f"{full_name} {repo.get('name') or ''}".lower()
+    if unique_tools > 500 and stars < 10 and ("stars" in name_blob or "starred" in name_blob):
+        info.append("automatyczny zrzut gwiazdek (star dump)")
     if not (repo.get("description") or "").strip():
         info.append("brak opisu")
     if unique_tools and conn.execute(
