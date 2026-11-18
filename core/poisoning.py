@@ -111,34 +111,57 @@ def assess_list(conn, full_name):
     elif unique_tools >= 60 and stars < 5:
         attention.append(f"{unique_tools} narzędzi przy {stars} gwiazdkach")
 
-    owners = conn.execute(
-        "SELECT COUNT(DISTINCT substr(url_norm, 12, instr(substr(url_norm, 12), '/') - 1)) "
-        "c FROM tools WHERE source_repo = ? AND url_norm LIKE 'github.com/%'",
-        (full_name,),
-    ).fetchone()["c"]
     github_tools = conn.execute(
         "SELECT COUNT(*) c FROM tools WHERE source_repo = ? "
         "AND url_norm LIKE 'github.com/%'", (full_name,)
     ).fetchone()["c"]
-    if github_tools >= 10 and owners == 1:
-        attention.append(
-            f"{github_tools} linków do jednego właściciela — linki do jednego projektu, "
-            f"nie katalog")
-    elif github_tools >= 40 and owners <= max(2, github_tools // 40):
-        attention.append(f"tylko {owners} różnych właścicieli dla {github_tools} linków")
 
     list_owner = full_name.split("/")[0].lower() if "/" in full_name else ""
     list_full = full_name.lower()
+    same_repo = 0
+    if github_tools >= 10:
+        same_repo = conn.execute(
+            "SELECT COUNT(*) c FROM tools WHERE source_repo = ? "
+            "AND (lower(url_norm) = ? OR lower(url_norm) LIKE ?)",
+            (full_name, f"github.com/{list_full}", f"github.com/{list_full}/%"),
+        ).fetchone()["c"]
+    ext_tools = github_tools - same_repo
+
+    if github_tools >= 10:
+        if same_repo == 0:
+            owners = conn.execute(
+                "SELECT COUNT(DISTINCT substr(url_norm, 12, instr(substr(url_norm, 12), '/') - 1)) "
+                "c FROM tools WHERE source_repo = ? AND url_norm LIKE 'github.com/%'",
+                (full_name,),
+            ).fetchone()["c"]
+            if owners == 1:
+                attention.append(
+                    f"{github_tools} linków do jednego właściciela — linki do jednego projektu, "
+                    f"nie katalog")
+            elif github_tools >= 40 and owners <= max(2, github_tools // 40):
+                attention.append(
+                    f"tylko {owners} różnych właścicieli dla {github_tools} linków")
+        elif ext_tools >= 10:
+            ext_owners = conn.execute(
+                "SELECT COUNT(DISTINCT substr(url_norm, 12, instr(substr(url_norm, 12), '/') - 1)) "
+                "c FROM tools WHERE source_repo = ? AND url_norm LIKE 'github.com/%' "
+                "AND NOT (lower(url_norm) = ? OR lower(url_norm) LIKE ?)",
+                (full_name, f"github.com/{list_full}", f"github.com/{list_full}/%"),
+            ).fetchone()["c"]
+            if ext_owners == 1:
+                attention.append(
+                    f"{ext_tools} zewnętrznych linków GitHub do jednego właściciela — "
+                    f"linki do jednego projektu, nie katalog")
+            elif ext_tools >= 40 and ext_owners <= max(2, ext_tools // 40):
+                attention.append(
+                    f"tylko {ext_owners} różnych właścicieli dla {ext_tools} "
+                    f"zewnętrznych linków GitHub")
+
     if github_tools >= 10 and list_owner:
         same_owner = conn.execute(
             "SELECT COUNT(*) c FROM tools WHERE source_repo = ? "
             "AND url_norm LIKE ?",
             (full_name, f"github.com/{list_owner}/%"),
-        ).fetchone()["c"]
-        same_repo = conn.execute(
-            "SELECT COUNT(*) c FROM tools WHERE source_repo = ? "
-            "AND (lower(url_norm) = ? OR lower(url_norm) LIKE ?)",
-            (full_name, f"github.com/{list_full}", f"github.com/{list_full}/%"),
         ).fetchone()["c"]
         external_self = same_owner - same_repo
         if external_self >= 10 and external_self / github_tools >= 0.5:
@@ -160,6 +183,18 @@ def assess_list(conn, full_name):
         info.append(f"kopia listy {repo['clone_of']}")
     if repo.get("is_fork") in {True, "true", "1"} and repo.get("parent"):
         info.append(f"fork listy {repo['parent']}")
+    repo_owner = (repo.get("owner") or full_name.split("/")[0]).strip()
+    if unique_tools > 500 and stars < 5 and repo_owner:
+        farm_count = conn.execute(
+            "SELECT COUNT(*) c FROM repos "
+            "WHERE lower(owner) = lower(?) "
+            "AND COALESCE(unique_tool_count, tool_count, 0) > 500 AND stars < 5",
+            (repo_owner,),
+        ).fetchone()["c"]
+        if farm_count >= 3:
+            info.append(
+                f"masowy generator list (farma {farm_count} list tego samego właściciela "
+                f"o niskiej reputacji)")
     name_blob = f"{full_name} {repo.get('name') or ''}".lower()
     if unique_tools > 500 and stars < 10 and ("stars" in name_blob or "starred" in name_blob):
         info.append("automatyczny zrzut gwiazdek (star dump)")
