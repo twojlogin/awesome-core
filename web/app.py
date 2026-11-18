@@ -596,10 +596,9 @@ def run_step(step, topic="awesome-list", limit=20000):
             flash("Nieprawidłowy topic (dozwolone: a-z, 0-9, myślnik).", "error")
             return redirect(url_for("refresh_page"))
         code, log = run_script(
-            "fetch_topic.py",
-            extra_args=["--topic-from-env", "100", "1", "20"],
+            "core/fetcher.py",
+            extra_args=[safe_topic, "--wide"],
             timeout=7200,
-            env={"AWESOME_DOWNLOAD_TOPIC": safe_topic},
         )
     else:
         flash("Nieznany krok", "error")
