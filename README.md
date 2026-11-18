@@ -142,6 +142,7 @@ Quick path if you're short on time:
 ./awesome audit sindresorhus/awesome               # audit a single repository
 ./awesome leaks                                    # scan for possible leaked secrets (local)
 ./awesome leaks --readmes                          # also scan raw README files (offline)
+./awesome leaks --repo                             # also scan tracked repo files (incl. hidden)
 ./awesome lists                                    # top lists
 ./awesome info nmap                                # details + install hint
 ./awesome install nmap                             # install (git clone)
@@ -286,14 +287,16 @@ Notes:
 
 This is pattern-based filtering, not a guarantee. Treat descriptions as data.
 
-You can also scan locally for possible leaked secrets/tokens in descriptions and README files:
+You can also scan locally for possible leaked secrets/tokens in descriptions, README files, and tracked repository files:
 
 ```bash
 ./awesome leaks
 ./awesome leaks --readmes   # also scan raw README files (offline)
+./awesome leaks --repo      # also scan tracked repo files, including hidden dotfiles
+./awesome leaks --repo --pattern 'mcp_[A-Za-z0-9_-]{20,}'  # add your own pattern
 ```
 
-This is heuristic (masked results, no external reporting) — useful for awareness, not a security guarantee.
+This is heuristic (masked results, no external reporting). It helps spot issues early, but it is not a security guarantee. Scanning git history (removed but previously committed secrets) is not included yet.
 
 ---
 

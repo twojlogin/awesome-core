@@ -185,6 +185,7 @@ Jeśli masz mało czasu, krok 1 możesz pominąć i nadrobić później:
 ./awesome audit sindresorhus/awesome               # audyt jednego repozytorium
 ./awesome leaks                                    # skan możliwych wycieków sekretów (lokalnie)
 ./awesome leaks --readmes                          # skanuj też surowe pliki README (offline)
+./awesome leaks --repo                             # skanuj też pliki śledzone w repo (w tym ukryte)
 ./awesome lists                                    # najlepsze listy
 ./awesome info nmap                                # dane + komenda instalacji
 ./awesome install nmap                             # zainstaluj (git clone)
@@ -380,14 +381,16 @@ narzędzia do obrony przed dokładnie tym problemem (`nvidia/skillspector`,
 Czego **nie** obiecuję: skaner łapie znane wzorce, nie jest dowodem
 niezawodności. Dlatego traktuj opisy jako dane, a nie polecenia.
 
-Możesz też lokalnie sprawdzić możliwe wycieki sekretów/tokenów w opisach i plikach README:
+Możesz też lokalnie sprawdzić możliwe wycieki sekretów/tokenów w opisach, plikach README i plikach śledzonych w repozytorium:
 
 ```bash
 ./awesome leaks
 ./awesome leaks --readmes   # skanuj też surowe pliki README (offline)
+./awesome leaks --repo      # skanuj też pliki śledzone w repo, w tym ukryte (dotfiles)
+./awesome leaks --repo --pattern 'mcp_[A-Za-z0-9_-]{20,}'  # dodaj własny wzorzec
 ```
 
-To heurystyki (zamaskowane wyniki, bez zgłaszania/wysyłania czegokolwiek) — pomocne do świadomego przeglądu, nie gwarancja bezpieczeństwa.
+To heurystyki (zamaskowane wyniki, bez zgłaszania/wysyłania czegokolwiek). Pomaga zachować czujność, ale nie jest gwarancją bezpieczeństwa. Skan historii git (sekrety usunięte z drzewa, ale obecne w commitach) nie jest jeszcze objęty.
 
 ---
 

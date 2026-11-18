@@ -31,9 +31,14 @@ Listy i fasetki:
   awesome lists                       — listy z najwyższą oceną jakości
   awesome clones                      — kopie i forki list (wpływ na ranking)
   awesome untrusted                   — skan opisów pod kątem prompt injection
-awesome audit                       — czy katalog nie jest zatruty fałszywymi listami
-awesome selfcheck                  — czy wyszukiwanie znajduje 15 znanych narzędzi
-awesome audit owner/repo            — audyt jednego repozytorium
+  awesome leaks                       — lokalny skan możliwych wycieków sekretów
+      --readmes [ścieżka]             — skanuj też surowe README (*.md)
+      --repo [ścieżka]                — skanuj pliki śledzone w repo (w tym ukryte)
+      --no-db                         — pomiń skan bazy narzędzi (np. audyt samego repo)
+      --pattern REGEX                 — dodatkowy wzorzec (można podać wiele razy)
+  awesome audit                       — czy katalog nie jest zatruty fałszywymi listami
+  awesome selfcheck                   — czy wyszukiwanie znajduje 15 znanych narzędzi
+  awesome audit owner/repo            — audyt jednego repozytorium
   awesome mcp                         — serwer MCP (stdio) dla lokalnych agentów
   awesome mcp --demo                  — pokaż wymianę JSON-RPC
   awesome list <owner/repo>           — narzędzia z listy
@@ -1054,32 +1059,64 @@ def cmd_leaks(args=None):
     wymagają ręcznej weryfikacji. Nic nie jest zgłaszane ani wysyłane —
     raport służy tylko do lokalnego sprawdzenia.
     """
-    args = args or []
+    args = list(args or [])
     from core import leaks, store
 
-    scan_readmes_flag = "--readmes" in args
+    scan_readmes_flag = False
     readmes_path = None
-    if scan_readmes_flag:
-        idx = args.index("--readmes")
-        if idx + 1 < len(args) and not str(args[idx + 1]).startswith("-"):
-            readmes_path = args[idx + 1]
-        else:
-            for candidate in (BASE_DIR / "offline-db" / "data" / "readmes",
-                              BASE_DIR / "data" / "readmes"):
-                if candidate.is_dir():
-                    readmes_path = str(candidate)
-                    break
-            if readmes_path is None:
-                readmes_path = str(BASE_DIR / "offline-db" / "data" / "readmes")
+    scan_repo_flag = False
+    repo_path = None
+    scan_db = True
+    extra_patterns = []
 
-    conn = store.connect(read_only=True)
-    tools, hits = leaks.scan(conn)
-    conn.close()
-    print(f"\nSkan bazy: {tools:,} narzędzi pod kątem możliwych wycieków sekretów")
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--readmes":
+            scan_readmes_flag = True
+            if i + 1 < len(args) and not str(args[i + 1]).startswith("-"):
+                readmes_path = args[i + 1]
+                i += 1
+        elif arg == "--repo":
+            scan_repo_flag = True
+            if i + 1 < len(args) and not str(args[i + 1]).startswith("-"):
+                repo_path = args[i + 1]
+                i += 1
+        elif arg == "--pattern" and i + 1 < len(args):
+            extra_patterns.append((args[i + 1], "Custom pattern"))
+            i += 1
+        elif arg in ("--no-db", "--only-repo", "--skip-db"):
+            scan_db = False
+        i += 1
+
+    if scan_readmes_flag and not readmes_path:
+        for candidate in (BASE_DIR / "offline-db" / "data" / "readmes",
+                          BASE_DIR / "data" / "readmes"):
+            if candidate.is_dir():
+                readmes_path = str(candidate)
+                break
+        if readmes_path is None:
+            readmes_path = str(BASE_DIR / "offline-db" / "data" / "readmes")
+    if scan_repo_flag and not repo_path:
+        repo_path = str(BASE_DIR)
+
+    hits = []
+    if scan_db:
+        conn = store.connect(read_only=True)
+        tools, hits = leaks.scan(conn, extra=extra_patterns)
+        conn.close()
+        print(f"\nSkan bazy: {tools:,} narzędzi pod kątem możliwych wycieków sekretów")
+    else:
+        print("\nSkan wycieków (bez bazy narzędzi)")
 
     if scan_readmes_flag:
-        files, r_hits = leaks.scan_readmes(readmes_path)
+        files, r_hits = leaks.scan_readmes(readmes_path, extra=extra_patterns)
         print(f"Skan README: {files} plików ({readmes_path})")
+        hits = list(hits) + list(r_hits)
+
+    if scan_repo_flag:
+        files, r_hits = leaks.scan_repo(repo_path, extra=extra_patterns)
+        print(f"Skan repo: {files} plików śledzonych ({repo_path})")
         hits = list(hits) + list(r_hits)
 
     if not hits:

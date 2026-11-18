@@ -872,7 +872,8 @@ class TestNoAIinCore(unittest.TestCase):
     # gdy użytkownik wprost o to poprosi.
     NETWORK_OK = {"trust.py", "aliases.py", "curator.py", "enrich.py",
                   "backfill.py", "mcp.py", "status.py", "builder.py",
-                  "validator.py", "fetcher.py", "bootstrap.py", "api.py"}
+                  "validator.py", "fetcher.py", "bootstrap.py", "api.py",
+                  "leaks.py"}
 
     def _imports(self, path):
         """Pełne nazwy modułów ('urllib.request'), bo same korzenie kłamią."""
@@ -1887,3 +1888,43 @@ class TestLeaks(unittest.TestCase):
             self.assertTrue(any(h["kind"] == "GitHub token (classic PAT)" for h in hits))
             self.assertTrue(all(h["field"] == "readme" for h in hits))
             self.assertTrue(all(secret != h["sample"] for h in hits))
+
+    def test_scan_text_detects_mcp_access_token(self):
+        secret = "mcp_ASM-" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        hits = leaks.scan_text(f'{{"Authorization":"Bearer {secret}"}}')
+        self.assertTrue(any(k == "MCP access token" for k, _ in hits))
+        sample = [s for k, s in hits if k == "MCP access token"][0]
+        self.assertNotEqual(sample, secret)
+        self.assertIn("…", sample)
+
+    def test_scan_repo_finds_secret_in_hidden_tracked_file(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init"], cwd=root, check=True,
+                           capture_output=True)
+            hidden = root / ".gemini"
+            hidden.mkdir()
+            secret = "mcp_ASM-" + "Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3h2S1t0"
+            cfg = hidden / "settings.json"
+            cfg.write_text(
+                '{"headers":{"Authorization":"Bearer ' + secret + '"}}\n',
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "add", ".gemini/settings.json"], cwd=root,
+                           check=True, capture_output=True)
+            files, hits = leaks.scan_repo(root)
+            self.assertGreaterEqual(files, 1)
+            self.assertTrue(any(h["kind"] == "MCP access token" for h in hits))
+            self.assertTrue(any(h["field"] == "repo_file" for h in hits))
+            self.assertTrue(any(".gemini/settings.json" in h["source"]
+                                for h in hits))
+            self.assertTrue(all(secret != h["sample"] for h in hits))
+
+    def test_scan_text_supports_custom_pattern(self):
+        secret = "acme_SECRET_1234567890TOKEN"
+        hits = leaks.scan_text(
+            f"value={secret}",
+            extra=[(r"\bacme_SECRET_[A-Za-z0-9]+\b", "Acme token")],
+        )
+        self.assertTrue(any(k == "Acme token" for k, _ in hits))

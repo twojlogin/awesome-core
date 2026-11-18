@@ -10,6 +10,7 @@ W raporcie sekret jest maskowany, żeby nie powielać go w logach/terminalu.
 """
 
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -24,11 +25,17 @@ _PATTERNS = [
     (r"\bAIza[0-9A-Za-z\-_]{35}\b", "Google API key"),
     (r"\bxox[baprs]-[0-9A-Za-z-]{10,}\b", "Slack token"),
     (r"\b(?:sk_live|rk_live)_[0-9A-Za-z]{20,}\b", "Stripe live key"),
+    (r"\bmcp_ASM-[A-Za-z0-9_-]{20,}\b", "MCP access token"),
     (r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----",
      "Private key block"),
 ]
 
 _COMPILED = [(re.compile(pattern), label) for pattern, label in _PATTERNS]
+
+# Domyślne pomijanie przy skanie plików repo (lokalne dane/środowiska/artefakty).
+_REPO_SKIP_PREFIXES = ("data/", "offline-db/", ".venv/", "venv/", ".git/")
+_REPO_SKIP_EXACT = {".git"}
+_MAX_REPO_FILE_BYTES = 1_000_000
 
 
 def _mask(secret):
@@ -45,15 +52,39 @@ def _is_placeholder(secret):
     return "EXAMPLE" in up
 
 
-def scan_text(text):
+def _compile_extra(extra):
+    compiled = []
+    for item in (extra or []):
+        if not item:
+            continue
+        if isinstance(item, tuple) and len(item) == 2:
+            pat, label = item
+            if hasattr(pat, "finditer"):
+                compiled.append((pat, label))
+            else:
+                compiled.append((re.compile(str(pat)), label or "Custom pattern"))
+        elif isinstance(item, str):
+            compiled.append((re.compile(item), "Custom pattern"))
+    return compiled
+
+
+def _iter_patterns(extra=None):
+    return list(_COMPILED) + _compile_extra(extra)
+
+
+def scan_text(text, extra=None):
     """Zwraca listę trafień [(etykieta, zamaskowana_próbka), ...]."""
     if not text:
         return []
     text = str(text)
     hits = []
     seen = set()
-    for pattern, label in _COMPILED:
-        for match in pattern.finditer(text):
+    for pattern, label in _iter_patterns(extra):
+        try:
+            matches = pattern.finditer(text)
+        except Exception:
+            continue
+        for match in matches:
             secret = match.group(0)
             if _is_placeholder(secret):
                 continue
@@ -66,7 +97,7 @@ def scan_text(text):
     return hits
 
 
-def scan(conn):
+def scan(conn, extra=None):
     """Przeskanuj bazę pod kątem możliwych wycieków sekretów.
 
     Zwraca (liczba_przeskanowanych_narzędzi, lista_trafień).
@@ -96,7 +127,7 @@ def scan(conn):
     for row in conn.execute(
             "SELECT name, description, url_norm, source_repo FROM tools"):
         for field in ("name", "description"):
-            for kind, sample in scan_text(row[field]):
+            for kind, sample in scan_text(row[field], extra=extra):
                 _add(row["url_norm"], row["name"], field, kind, sample,
                      row["source_repo"])
 
@@ -104,7 +135,7 @@ def scan(conn):
     try:
         for row in conn.execute(
                 "SELECT url_norm, name, source_repo, description FROM tool_mentions"):
-            for kind, sample in scan_text(row["description"]):
+            for kind, sample in scan_text(row["description"], extra=extra):
                 _add(row["url_norm"], row["name"], "mention_description",
                      kind, sample, row["source_repo"])
     except Exception:
@@ -114,7 +145,7 @@ def scan(conn):
     return tools, hits
 
 
-def scan_readmes(readmes_dir):
+def scan_readmes(readmes_dir, extra=None):
     """Skanuje surowe pliki README (*.md) w katalogu (lokalnie, offline).
 
     Zwraca (liczba_plików, lista_trafień). Każde trafienie ma field='readme',
@@ -135,7 +166,7 @@ def scan_readmes(readmes_dir):
             continue
         name = md_path.stem.replace("__", "/", 1)
         source = str(md_path)
-        for kind, sample in scan_text(text):
+        for kind, sample in scan_text(text, extra=extra):
             key = (name, "readme", kind, sample, source)
             if key in seen:
                 continue
@@ -147,5 +178,73 @@ def scan_readmes(readmes_dir):
                 "kind": kind,
                 "sample": sample,
                 "source": source,
+            })
+    return files, hits
+
+
+def _skip_repo_path(relpath):
+    p = relpath.replace("\\", "/")
+    if p in _REPO_SKIP_EXACT:
+        return True
+    for prefix in _REPO_SKIP_PREFIXES:
+        if p == prefix.rstrip("/") or p.startswith(prefix):
+            return True
+    return False
+
+
+def scan_repo(repo_dir, extra=None, max_bytes=_MAX_REPO_FILE_BYTES):
+    """Skanuje pliki śledzone przez git w repozytorium (w tym ukryte).
+
+    Zwraca (liczba_przeskanowanych_plików, lista_trafień). Każde trafienie ma
+    field='repo_file', name/source ustawione na ścieżkę względem repo.
+    Pomija binaria, duże pliki i lokalne katalogi danych/środowisk.
+    To heurystyki — wyniki wymagają ręcznej weryfikacji.
+    """
+    root = Path(repo_dir)
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            capture_output=True, check=False,
+        )
+    except OSError:
+        return 0, []
+    if proc.returncode != 0:
+        return 0, []
+
+    raw = proc.stdout.decode("utf-8", errors="replace")
+    paths = [p for p in raw.split("\0") if p]
+    hits = []
+    seen = set()
+    files = 0
+    for rel in paths:
+        if _skip_repo_path(rel):
+            continue
+        file_path = root / rel
+        try:
+            if file_path.is_symlink():
+                continue
+            size = file_path.stat().st_size
+            if size > max_bytes:
+                continue
+            with open(file_path, "rb") as f:
+                data = f.read(max_bytes + 1)
+        except OSError:
+            continue
+        if b"\0" in data:
+            continue
+        files += 1
+        text = data.decode("utf-8", errors="replace")
+        for kind, sample in scan_text(text, extra=extra):
+            key = (rel, "repo_file", kind, sample, rel)
+            if key in seen:
+                continue
+            seen.add(key)
+            hits.append({
+                "url": "",
+                "name": rel,
+                "field": "repo_file",
+                "kind": kind,
+                "sample": sample,
+                "source": rel,
             })
     return files, hits
