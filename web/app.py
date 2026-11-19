@@ -640,7 +640,8 @@ def run_script(script, extra_args=None, timeout=None, env=None):
     if env:
         run_env.update(env)
     try:
-        result = subprocess.run(  # lgtm[py/command-line-injection]
+        # args are hardcoded/validated: script allowlisted, topic matches TOPIC_RE, limit is int
+        result = subprocess.run(  # codeql[py/command-line-injection]
             args, cwd=str(BASE_DIR), capture_output=True, text=True,
             timeout=timeout, env=run_env,
         )
