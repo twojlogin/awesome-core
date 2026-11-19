@@ -621,6 +621,11 @@ def run_script(script, extra_args=None, timeout=None, env=None):
     """Odpala skrypt Pythona i zwraca (kod wyjścia, końcówkę logu).
     Wszystkie argumenty wiersza polecenia są hartkodowane — dane użytkownika
     przekazywane są wyłącznie przez zmienną środowiskową (env), nigdy przez args."""
+    if script != "-c" and not re.fullmatch(r"[A-Za-z0-9_./-]+\.py", str(script)):
+        raise ValueError("script must be a local .py path or -c")
+    script = str(script)
+    if script != "-c" and Path(script).is_absolute():
+        raise ValueError("script path must be relative")
     args = [sys.executable, script]
     if extra_args:
         for a in extra_args:
@@ -635,7 +640,7 @@ def run_script(script, extra_args=None, timeout=None, env=None):
     if env:
         run_env.update(env)
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # lgtm[py/command-line-injection]
             args, cwd=str(BASE_DIR), capture_output=True, text=True,
             timeout=timeout, env=run_env,
         )
