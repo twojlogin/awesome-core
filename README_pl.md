@@ -387,6 +387,7 @@ Możesz też lokalnie sprawdzić możliwe wycieki sekretów/tokenów w opisach, 
 ./awesome leaks
 ./awesome leaks --readmes   # skanuj też surowe pliki README (offline)
 ./awesome leaks --repo      # skanuj też pliki śledzone w repo, w tym ukryte (dotfiles)
+./awesome leaks --repo /ścieżka/do/repo --no-db  # audyt innego repo bez skanowania bazy narzędzi
 ./awesome leaks --repo --pattern 'mcp_[A-Za-z0-9_-]{20,}'  # dodaj własny wzorzec
 ```
 

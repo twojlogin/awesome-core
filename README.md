@@ -293,6 +293,7 @@ You can also scan locally for possible leaked secrets/tokens in descriptions, RE
 ./awesome leaks
 ./awesome leaks --readmes   # also scan raw README files (offline)
 ./awesome leaks --repo      # also scan tracked repo files, including hidden dotfiles
+./awesome leaks --repo /path/to/repo --no-db  # audit another repo without scanning the tools DB
 ./awesome leaks --repo --pattern 'mcp_[A-Za-z0-9_-]{20,}'  # add your own pattern
 ```
 
