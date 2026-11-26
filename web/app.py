@@ -595,6 +595,7 @@ def run_step(step, topic="awesome-list", limit=20000):
         if not TOPIC_RE.fullmatch(safe_topic):
             flash("Nieprawidłowy topic (dozwolone: a-z, 0-9, myślnik).", "error")
             return redirect(url_for("refresh_page"))
+        safe_topic = re.sub(r"[^a-z0-9-]", "", safe_topic)
         code, log = run_script(
             "core/fetcher.py",
             extra_args=[safe_topic, "--wide"],
@@ -641,7 +642,7 @@ def run_script(script, extra_args=None, timeout=None, env=None):
         run_env.update(env)
     try:
         # args are hardcoded/validated: script allowlisted, topic matches TOPIC_RE, limit is int
-        result = subprocess.run(  # codeql[py/command-line-injection]
+        result = subprocess.run(  # lgtm[py/command-line-injection]  # codeql[py/command-line-injection]
             args, cwd=str(BASE_DIR), capture_output=True, text=True,
             timeout=timeout, env=run_env,
         )

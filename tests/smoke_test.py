@@ -1929,7 +1929,7 @@ class TestLeaks(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "owner__repo.md"
             secret = "ghp_" + "AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRr"  # test fixture, not a real token
-            p.write_text(f"example config:\nTOKEN={secret}\n", encoding="utf-8")  # lgtm[py/clear-text-storage-sensitive-data]
+            p.write_text(f"example config:\nTOKEN={secret}\n", encoding="utf-8")  # codeql[py/clear-text-storage-sensitive-data]
             files, hits = leaks.scan_readmes(td)
             self.assertEqual(files, 1)
             self.assertTrue(any(h["kind"] == "GitHub token (classic PAT)" for h in hits))
@@ -1955,7 +1955,7 @@ class TestLeaks(unittest.TestCase):
             secret = "mcp_ASM-" + "Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3h2S1t0"  # test fixture, not a real token
             cfg = hidden / "settings.json"
             cfg.write_text(
-                '{"headers":{"Authorization":"Bearer ' + secret + '"}}\n',  # lgtm[py/clear-text-storage-sensitive-data]
+                '{"headers":{"Authorization":"Bearer ' + secret + '"}}\n',  # codeql[py/clear-text-storage-sensitive-data]
                 encoding="utf-8",
             )
             subprocess.run(["git", "add", ".gemini/settings.json"], cwd=root,
