@@ -809,6 +809,7 @@ class TestDocsAreTruthful(unittest.TestCase):
         skip = {"start", "refresh", "install", "uninstall", "web", "tui",
                 "clones", "status", "doctor",
                 "demo", "validate", "enrich", "build", "download", "untrusted",
+                "mcp", "leaks", "selfcheck", "test",
                 "ask", "audit", "collection", "fetch", "topic", "check", "add"}
         self.assertGreater(len(commands), 20)
         with tempfile.TemporaryDirectory() as tmp:
@@ -1683,7 +1684,8 @@ class TestDatabase(unittest.TestCase):
         state = status_mod.collect(self.data_dir)
         self.assertTrue(state["ready"])
         self.assertEqual(state["tools"], self.summary["tools"])
-        self.assertTrue(any(step["id"] == "build" for step in state["steps"]))
+        # świeżo po buildzie, bez nowszego backfill/enrich — rebuild niepotrzebny
+        self.assertFalse(any(step["id"] == "build" for step in state["steps"]))
         self.assertIn("Stan danych", "\n".join(status_mod.render(state)))
 
     def test_explain(self):

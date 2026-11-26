@@ -70,6 +70,7 @@ Your own list:
   awesome shortlist emit --out my.md  — Markdown to paste into your list
 
 Other:
+  awesome test                        — run smoke tests (bootstraps deps if needed)
   awesome tui                         — terminal UI (curses)
   awesome web [port]                  — start Flask web UI
   awesome demo | stats | info | install | uninstall | installed
@@ -149,6 +150,7 @@ Twoja własna lista:
   awesome shortlist emit --out moja.md — Markdown do wklejenia w listę
 
 Inne:
+  awesome test                        — uruchom smoke testy (dobierze .venv/bootstrap jeśli trzeba)
   awesome tui                         — interfejs terminalowy (curses)
   awesome web [port]                  — uruchom Flask
   awesome demo | stats | info | install | uninstall | installed
@@ -1144,6 +1146,29 @@ def cmd_catalog_audit(args):
     conn.close()
 
 
+def cmd_test(args=None):
+    """Run smoke tests, bootstrapping deps if needed."""
+    from core import bootstrap
+
+    args = args or []
+    py = sys.executable
+    if not bootstrap.has_flask(py):
+        venv_py = bootstrap.venv_python()
+        if venv_py.exists() and bootstrap.has_flask(venv_py):
+            py = str(venv_py)
+        else:
+            print("[*] Flask not found in current Python; trying bootstrap...")
+            ensured = bootstrap.ensure_flask_interpreter(verbose=True)
+            if ensured:
+                py = str(ensured)
+            else:
+                print("[!] Could not bootstrap Flask. Tests may fail in env-dependent cases.")
+                print("    Try: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt")
+    cmd = [py, str(BASE_DIR / "tests" / "smoke_test.py"), *args]
+    print(f"[*] Running: {' '.join(cmd)}")
+    return subprocess.run(cmd, cwd=str(BASE_DIR), check=False).returncode
+
+
 def cmd_selfcheck(tools_db):
     """Czy katalog znajduje znane narzędzie po nazwie. Prawda z zewnątrz.
 
@@ -1555,6 +1580,8 @@ def main():
     elif cmd == "backfill":
         cmd_backfill(_flag_int(args, "--limit"), force="--force" in args,
                      only_missing="--only-missing" in args)
+    elif cmd == "test":
+        sys.exit(cmd_test(args) or 0)
     elif cmd in {"selfcheck", "sprawdz-siebie"}:
         tools_db, _, _ = dbs()
         cmd_selfcheck(tools_db)
