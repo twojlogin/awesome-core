@@ -1,22 +1,22 @@
 <div class="tool">
     <div class="row">
         <a href="/tool/{{ tool.url_norm }}" class="name">{{ tool.display_name or tool.name }}</a>
-        {% if tool.name_taken_by %}<span class="dim small" title="w bazie jest kilka różnych narzędzi o tej nazwie">×{{ tool.name_taken_by }}</span>{% endif %}
+        {% if tool.name_taken_by %}<span class="dim small" title="{% if lang == 'pl' %}w bazie jest kilka różnych narzędzi o tej nazwie{% else %}multiple different tools share this name{% endif %}">×{{ tool.name_taken_by }}</span>{% endif %}
         {% if tool.tool_stars %}<span class="score">★ {{ "{:,}".format(tool.tool_stars) }}</span>
-        {% elif tool.source_stars %}<span class="score">★ {{ "{:,}".format(tool.source_stars) }} <span class="dim">(lista)</span></span>{% endif %}
-        {% if tool.lists_count > 1 %}<span class="badge good" title="w ilu niezależnych listach">{{ tool.lists_count }}×</span>{% endif %}
+        {% elif tool.source_stars %}<span class="score">★ {{ "{:,}".format(tool.source_stars) }} <span class="dim">({% if lang == 'pl' %}lista{% else %}list{% endif %})</span></span>{% endif %}
+        {% if tool.lists_count > 1 %}<span class="badge good" title="{% if lang == 'pl' %}w ilu niezależnych listach{% else %}independent list mentions{% endif %}">{{ tool.lists_count }}×</span>{% endif %}
         {% if tool.lang and tool.lang != '?' %}<a class="tag" href="/lang/{{ tool.lang }}">{{ tool.lang }}</a>{% endif %}
         {% for platform in (tool.platforms or [])[:2] %}<a class="tag" href="/os/{{ platform }}">{{ platform }}</a>{% endfor %}
         {% for domain in (tool.domains or [])[:2] %}<a class="tag" href="/domain/{{ domain }}">{{ domain }}</a>{% endfor %}
         <span class="dim small">score {{ "%.0f"|format(tool.score) }}</span>
-        {% if tool.alive is sameas false %}<span class="bad small" title="{{ tool.alive_reason }}">✗ martwy</span>
-        {% elif tool.alive is sameas true %}<span class="good small">✓ żywy</span>{% endif %}
+        {% if tool.alive is sameas false %}<span class="bad small" title="{{ tool.alive_reason }}">✗ {% if lang == 'pl' %}martwy{% else %}dead{% endif %}</span>
+        {% elif tool.alive is sameas true %}<span class="good small">✓ {% if lang == 'pl' %}żywy{% else %}alive{% endif %}</span>{% endif %}
     </div>
     {% if tool.description %}<div class="desc">{{ tool.description[:220] }}</div>{% endif %}
     <div class="meta">
         {% if tool.section %}<a href="/section/{{ tool.section }}">{{ tool.section }}</a>{% endif %}
-        {% if tool.source_repo %}· z <a href="/list/{{ tool.source_repo }}">{{ tool.source_repo }}</a>{% endif %}
+        {% if tool.source_repo %}· {% if lang == 'pl' %}z{% else %}from{% endif %} <a href="/list/{{ tool.source_repo }}">{{ tool.source_repo }}</a>{% endif %}
         {% if tool.install_method %}· {{ tool.install_method }}{% endif %}
-        {% if tool.underrated and tool.underrated > 30 %}· <a href="/underrated">niedoceniane</a>{% endif %}
+        {% if tool.underrated and tool.underrated > 30 %}· <a href="/underrated">{% if lang == 'pl' %}niedoceniane{% else %}underrated{% endif %}</a>{% endif %}
     </div>
 </div>

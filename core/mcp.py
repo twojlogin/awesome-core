@@ -27,7 +27,7 @@ from core.tools_db import ToolsDB
 
 PROTOCOL_DEFAULT = "2025-06-18"
 SERVER_NAME = "awesome-core"
-SERVER_VERSION = "2.0"
+SERVER_VERSION = "2.2.0"
 
 MAX_LIMIT = 50
 MAX_QUERY = 200
@@ -130,7 +130,8 @@ def _clip(text, limit=DESC_CHARS):
 
 
 def _tool_line(index, tool):
-    parts = [f"{index}. {tool.get('name', '?')}"]
+    name = untrusted.sanitize(tool.get("name"), limit=120)[0] or "?"
+    parts = [f"{index}. {name}"]
     meta = []
     lang = tool.get("lang")
     if lang and lang != "?":
@@ -327,8 +328,9 @@ class MCPServer:
             f"  - {m['source_repo']} ({m['section'] or '—'})"
             for m in detail["mentions"][:15]
         )
+        name = untrusted.sanitize(tool.get("name"), limit=120)[0] or "?"
         return "\n".join([
-            f"{tool['name']} — {tool.get('url', '')}",
+            f"{name} — {tool.get('url', '')}",
             f"score {detail['score']:.1f} · niedoceniane {detail['underrated']:.1f}",
             f"język {tool.get('lang') or '?'} · platforma {tool.get('platform') or '—'}",
             f"gwiazdki {tool.get('tool_stars', 0)} · zgoda {tool.get('lists_count', 0)} list"
@@ -358,7 +360,8 @@ class MCPServer:
             if canonical:
                 marker = f"  [kopia listy {canonical}]"
             lines.append(f"  - {mention['source_repo']} ({mention['section'] or '—'}){marker}")
-        return "\n".join([f"{tool['name']} w {len(lines)} listach:"] + lines)
+        name = untrusted.sanitize(tool.get("name"), limit=120)[0] or "?"
+        return "\n".join([f"{name} w {len(lines)} listach:"] + lines)
 
     def _facets(self):
         stats = self.db.stats()

@@ -1,26 +1,26 @@
 <div class="panel">
-    <h2 style="margin-top:0;">Filtry</h2>
+    <h2 style="margin-top:0;">{% if lang == 'pl' %}Filtry{% else %}Filters{% endif %}</h2>
     <form action="/search" method="get" class="row" style="margin-bottom:0.7rem;">
-        <input type="text" name="q" value="{{ query|default('') }}" placeholder="szukaj narzędzi..." style="flex:1;">
-        <button type="submit">Szukaj</button>
+        <input type="text" name="q" value="{{ query|default('') }}" placeholder="{% if lang == 'pl' %}szukaj narzędzi...{% else %}search tools...{% endif %}" style="flex:1;">
+        <button type="submit">{{ t('search_button') }}</button>
     </form>
-    <div class="small muted" style="margin-bottom:0.3rem;">Język</div>
+    <div class="small muted" style="margin-bottom:0.3rem;">{% if lang == 'pl' %}Język{% else %}Language{% endif %}</div>
     <div class="facets">
         {% for name, count in langs %}<a class="tag" href="/lang/{{ name }}">{{ name }} <span class="dim">{{ count }}</span></a>{% endfor %}
     </div>
-    <div class="small muted" style="margin:0.6rem 0 0.3rem;">Platforma</div>
+    <div class="small muted" style="margin:0.6rem 0 0.3rem;">{% if lang == 'pl' %}Platforma{% else %}Platform{% endif %}</div>
     <div class="facets">
         {% for name, count in platforms %}<a class="tag" href="/os/{{ name }}">{{ name }} <span class="dim">{{ count }}</span></a>{% endfor %}
     </div>
-    <div class="small muted" style="margin:0.6rem 0 0.3rem;">Domena</div>
+    <div class="small muted" style="margin:0.6rem 0 0.3rem;">{% if lang == 'pl' %}Domena{% else %}Domain{% endif %}</div>
     <div class="facets">
         {% for name, count in domains %}<a class="tag" href="/domain/{{ name }}">{{ name }} <span class="dim">{{ count }}</span></a>{% endfor %}
     </div>
-    <div class="small muted" style="margin:0.6rem 0 0.3rem;">Inaczej</div>
+    <div class="small muted" style="margin:0.6rem 0 0.3rem;">{% if lang == 'pl' %}Inaczej{% else %}More{% endif %}</div>
     <div class="facets">
-        <a class="tag" href="/underrated">niedoceniane</a>
-        <a class="tag" href="/gems">perełki</a>
-        <a class="tag" href="/lists">listy</a>
-        <a class="tag" href="/random">losowe</a>
+        <a class="tag" href="/underrated">{{ t('underrated') }}</a>
+        <a class="tag" href="/gems">{{ t('hidden_gems') }}</a>
+        <a class="tag" href="/lists">{{ t('nav_lists') }}</a>
+        <a class="tag" href="/random">{% if lang == 'pl' %}losowe{% else %}random{% endif %}</a>
     </div>
 </div>

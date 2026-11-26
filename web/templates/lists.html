@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Listy — Awesome Core{% endblock %}
+{% block title %}{% if lang == 'pl' %}Listy — Awesome Core{% else %}Lists — Awesome Core{% endif %}{% endblock %}
 {% block content %}
-<h2 style="margin-top:0;">Listy awesome w bazie</h2>
-<p class="small muted"><a href="/lists/clones">Kopie i forki list →</a>
-   (wzmianki z kopii nie liczą się do zgody kuratorów)</p>
-<p class="muted small">Jakość = opisy + unikalność + żywe linki + świeżość + rozmiar (0–1).</p>
+<h2 style="margin-top:0;">{% if lang == 'pl' %}Listy awesome w bazie{% else %}Awesome lists in database{% endif %}</h2>
+<p class="small muted"><a href="/lists/clones">{% if lang == 'pl' %}Kopie i forki list →{% else %}List copies and forks →{% endif %}</a>
+   {% if lang == 'pl' %}(wzmianki z kopii nie liczą się do zgody kuratorów){% else %}(mentions from copies don't count toward curator consensus){% endif %}</p>
+<p class="muted small">{% if lang == 'pl' %}Jakość = opisy + unikalność + żywe linki + świeżość + rozmiar (0–1).{% else %}Quality = descriptions + uniqueness + live links + freshness + size (0–1).{% endif %}</p>
 <table class="data">
-    <tr><th>lista</th><th>★</th><th>jakość</th><th>narzędzi</th><th>wzmianek</th><th>język listy</th></tr>
+    <tr><th>{% if lang == 'pl' %}lista{% else %}list{% endif %}</th><th>★</th><th>{% if lang == 'pl' %}jakość{% else %}quality{% endif %}</th><th>{% if lang == 'pl' %}narzędzi{% else %}tools{% endif %}</th><th>{% if lang == 'pl' %}wzmianek{% else %}mentions{% endif %}</th><th>{% if lang == 'pl' %}język listy{% else %}list language{% endif %}</th></tr>
     {% for row in best %}
     <tr>
         <td><a href="/list/{{ row.full_name }}">{{ row.full_name }}</a></td>

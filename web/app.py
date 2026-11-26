@@ -120,7 +120,7 @@ def find_tool(needle):
 
 
 def _ui_lang():
-    lang = request.args.get("lang") or request.cookies.get("ui_lang") or "pl"
+    lang = request.args.get("lang") or request.cookies.get("ui_lang") or "en"
     return normalize_lang(lang)
 
 

@@ -1,47 +1,53 @@
 {% extends "base.html" %}
 {% block title %}{{ query }} — Awesome Core{% endblock %}
 {% block content %}
-<div class="breadcrumb"><a href="/">start</a> / wyniki</div>
+<div class="breadcrumb"><a href="/">{{ t('home') }}</a> / {% if lang == 'pl' %}wyniki{% else %}results{% endif %}</div>
 <div class="grid">
 <div>
-    <h2 style="margin-top:0;">{% if query %}{{ query }} — {{ total }} wyników{% else %}Wpisz zapytanie{% endif %}</h2>
+    <h2 style="margin-top:0;">{% if query %}{{ query }} — {{ total }} {% if lang == 'pl' %}wyników{% else %}results{% endif %}{% else %}{% if lang == 'pl' %}Wpisz zapytanie{% else %}Enter a query{% endif %}{% endif %}</h2>
     <form action="/search" method="get" class="panel row">
         <input type="text" name="q" value="{{ query }}" style="flex:1;">
         <select name="lang">
-            <option value="">dowolny język</option>
+            <option value="">{% if lang == 'pl' %}dowolny język{% else %}any language{% endif %}</option>
             {% for name, count in langs %}<option value="{{ name }}" {% if filters.lang == name %}selected{% endif %}>{{ name }} ({{ count }})</option>{% endfor %}
         </select>
         <select name="os">
-            <option value="">dowolna platforma</option>
+            <option value="">{% if lang == 'pl' %}dowolna platforma{% else %}any platform{% endif %}</option>
             {% for name, count in platforms %}<option value="{{ name }}" {% if filters.platform == name %}selected{% endif %}>{{ name }} ({{ count }})</option>{% endfor %}
         </select>
         <select name="domain">
-            <option value="">dowolna domena</option>
+            <option value="">{% if lang == 'pl' %}dowolna domena{% else %}any domain{% endif %}</option>
             {% for name, count in domains %}<option value="{{ name }}" {% if filters.domain == name %}selected{% endif %}>{{ name }} ({{ count }})</option>{% endfor %}
         </select>
         <select name="sort">
+            {% if lang == 'pl' %}
             {% for value, label in [('score','score'),('consensus','zgoda kuratorów'),('stars','gwiazdki'),('underrated','niedoceniane'),('gem','perełki'),('name','nazwa')] %}
             <option value="{{ value }}" {% if filters.sort == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
+            {% else %}
+            {% for value, label in [('score','score'),('consensus','curator consensus'),('stars','stars'),('underrated','underrated'),('gem','hidden gems'),('name','name')] %}
+            <option value="{{ value }}" {% if filters.sort == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+            {% endif %}
         </select>
         <select name="min_stars">
-            <option value="0">gwiazdki: dowolnie</option>
+            <option value="0">{% if lang == 'pl' %}gwiazdki: dowolnie{% else %}stars: any{% endif %}</option>
             {% for value in [10, 100, 1000, 10000] %}<option value="{{ value }}" {% if filters.min_stars == value %}selected{% endif %}>★ {{ value }}+</option>{% endfor %}
         </select>
-        <input type="text" name="min_consensus" value="{{ min_consensus or '' }}" placeholder="min. list" size="4">
-        <button type="submit">Filtruj</button>
+        <input type="text" name="min_consensus" value="{{ min_consensus or '' }}" placeholder="{% if lang == 'pl' %}min. list{% else %}min. lists{% endif %}" size="4">
+        <button type="submit">{% if lang == 'pl' %}Filtruj{% else %}Filter{% endif %}</button>
     </form>
     {% if hints %}
     <div class="panel warn" style="margin:1rem 0;">
-        <b>Filtry są zbyt wąskie.</b> Łączą się przez AND, więc razem zostawiły
-        tylko {{ total }} wynik(ów). Odpuść jeden:
+        <b>{% if lang == 'pl' %}Filtry są zbyt wąskie.{% else %}Filters are too narrow.{% endif %}</b>
+        {% if lang == 'pl' %}Łączą się przez AND, więc razem zostawiły tylko {{ total }} wynik(ów). Odpuść jeden:{% else %}They combine with AND, leaving only {{ total }} result(s). Drop one:{% endif %}
         {% for key, value, count in hints %}
-        <a class="tag" href="/search?q={{ query|urlencode }}{% if key == 'lang' %}&lang={{ value|urlencode }}{% elif key == 'platform' %}&os={{ value|urlencode }}{% elif key == 'domain' %}&domain={{ value|urlencode }}{% endif %}">bez {{ key }}={{ value }} → {{ count }} wyników</a>
+        <a class="tag" href="/search?q={{ query|urlencode }}{% if key == 'lang' %}&lang={{ value|urlencode }}{% elif key == 'platform' %}&os={{ value|urlencode }}{% elif key == 'domain' %}&domain={{ value|urlencode }}{% endif %}">{% if lang == 'pl' %}bez{% else %}without{% endif %} {{ key }}={{ value }} → {{ count }}</a>
         {% endfor %}
     </div>
     {% endif %}
     {% for tool in results %}{% include "partials/tool_row.html" %}{% endfor %}
-    {% if query and not results %}<p class="muted">Brak wyników. Spróbuj szerszego zapytania albo wyczyść filtry.</p>{% endif %}
+    {% if query and not results %}<p class="muted">{% if lang == 'pl' %}Brak wyników. Spróbuj szerszego zapytania albo wyczyść filtry.{% else %}No results. Try a broader query or clear filters.{% endif %}</p>{% endif %}
 </div>
 <div>{% include "partials/facets.html" %}</div>
 </div>

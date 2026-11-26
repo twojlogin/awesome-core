@@ -1,177 +1,175 @@
 {% extends "base.html" %}
-{% block title %}Pomoc — Awesome Core{% endblock %}
+{% block title %}{% if lang == 'pl' %}Pomoc — Awesome Core{% else %}Help — Awesome Core{% endif %}{% endblock %}
 {% block content %}
+{% if lang == 'pl' %}
 <h2 style="margin-top:0;">Awesome Core — lokalny katalog narzędzi z awesome list</h2>
-<p class="muted">Jeden silnik (SQLite + FTS5), cztery wejścia: <b>CLI</b>, <b>TUI</b>,
-<b>Web</b> i <b>MCP</b> dla lokalnych agentów. Po pobraniu list zero sieci —
-wszystko działa lokalnie.</p>
+<p class="muted">Jeden silnik (SQLite + FTS5), interfejsy: <b>CLI</b>, <b>TUI</b>, <b>Web</b> i <b>MCP</b> dla lokalnych agentów. Po pobraniu list zero sieci — wszystko działa lokalnie.</p>
 
 <h2>Nic nie działa w tle</h2>
-<p class="muted small">Żadnych cronów, daemonów ani ukrytych procesów. Odświeżanie
-uruchamiasz ręcznie — jednym poleceniem albo klikając przycisk na stronie
-<a href="/refresh">/refresh</a>. Każdy krok wypisuje log i czeka na zakończenie,
-więc zawsze widzisz, co się stało.</p>
+<p class="muted small">Żadnych cronów, daemonów ani ukrytych procesów. Odświeżanie uruchamiasz ręcznie — jednym poleceniem albo klikając przycisk na stronie <a href="/refresh">/refresh</a>. Każdy krok wypisuje log i czeka na zakończenie.</p>
 
 <h2>Pierwsze uruchomienie</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
 ./awesome start          # pobierz listy → zbuduj bazę → metadane list
-./awesome start --full   # ...plus metadane narzędzi (dłuższe, ~30–60 min)
+./awesome start --full   # ...plus metadane narzędzi (dłuższe)
 ./awesome status         # co jest w bazie i co warto odświeżyć
 ./awesome doctor         # coś nie działa? tu jest odpowiedź
 </pre>
-<p class="muted small"><code>start</code> nie odpytuje GitHuba o repozytoria samych
-narzędzi — ranking działa od razu, ale „★" przy narzędziu to na razie szacunek
-z listy. Jedna komenda to naprawia: <code>./awesome enrich</code> (30–60 min,
-Ctrl+C jest bezpieczny, dokończenie jedzie od miejsca przerwania), potem
-<code>./awesome build</code>.</p>
-<p class="small">Na Windows: <code>awesome.cmd start</code> — działa w PowerShellu
-i po podwójnym kliknięciu, bez basha.</p>
-<p class="small dim">Odświeżanie później: <code>./awesome refresh</code> (kolejność
-i czasy wypisuje na ekranie). Pojedyncze kroki:
-<code>./awesome download</code> · <code>./awesome build</code> ·
-<code>./awesome backfill</code> · <code>./awesome enrich</code>. Plan bez wykonywania:
-<code>./awesome refresh --dry-run</code>.</p>
+<p class="small dim">Na Windows: <code>awesome.cmd start</code>. Flaska nie musisz instalować ręcznie — przy pierwszym <code>./awesome web</code> program przygotowuje środowisko i wypisuje każdy krok.</p>
 
-<h2>Wyszukiwanie po ludzku</h2>
+<h2>Wyszukiwanie</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
-./awesome search "port scanner"
-./awesome search osint --domain security --min-consensus 3
-./awesome search "active directory" --os windows
+./awesome search nmap
+./awesome search "port scanner" --lang python --os linux --domain security
+./awesome search osint --min-consensus 3 --sort stars
 </pre>
-<p class="small dim">Filtry: <code>--lang</code> <code>--os</code> <code>--domain</code>
-<code>--list</code> <code>--min-stars</code> <code>--min-consensus</code>
-<code>--sort</code> (score, stars, consensus, underrated, gem, name) <code>--alive</code>.</p>
-<p class="small dim"><b>Filtry łączy AND, więc kumulują się.</b>
-<code>--lang Python --os windows</code> przy „port scanner" zostawia 5 wyników,
-a z trzecim filtrem często jeden przypadkowy. Program mówi wtedy wprost, który
-filtr odpuścić i ile wtedy wychodzi.</p>
+<p class="small dim">Filtry: <code>--lang</code> <code>--os</code> <code>--domain</code> <code>--list</code> <code>--min-stars</code> <code>--min-consensus</code> <code>--sort score|stars|consensus|underrated|gem|name</code> <code>--alive</code>. Filtry łączą się przez AND.</p>
 
-<h2>Fasetyki</h2>
+<h2>Listy i fasety</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
-./awesome langs          # języki narzędzi
-./awesome platforms      # windows, WSL, Linux, macOS, Docker, CLI…
-./awesome domains        # osint, security, network, devops, reverse-engineering…
-./awesome lists          # listy z najwyższą oceną jakości
-./awesome underrated     # dobre narzędzia z małych list
-./awesome gems           # ukryte perełki
+./awesome langs | platforms | domains
+./awesome lists
+./awesome clones
+./awesome underrated [--lang X]
+./awesome gems [--lang X]
+./awesome consensus [--limit N]
+./awesome top [n]
 </pre>
 
-<h2>Rzadziej używane</h2>
+<h2>Narzędzia i listy</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
-./awesome clones          # kopie i forki list (próg 80%)
-./awesome untrusted       # skan opisów pod kątem prompt injection
-./awesome leaks           # lokalny skan możliwych wycieków sekretów
-./awesome leaks --repo    # + pliki śledzone w repo (w tym ukryte)
-./awesome consensus       # narzędzia z największą zgodą kuratorów
-./awesome top 10          # top list wg gwiazdek
-./awesome repos osint     # szukaj list/repozytoriów
-./awesome watch add vinta/awesome-python   # śledzone repozytoria list
-./awesome install nmap    # git clone narzędzia
-./awesome demo            # co program potrafi, na żywo
-</pre>
-<p class="small dim"><code>watch</code> i <code>shortlist</code> to dwie różne listy:
-watch śledzi <b>repozytoria list</b> (co doszło nowego), shortlist zbiera
-<b>narzędzia</b> i generuje Markdown.</p>
-
-<h2>Skąd ranking</h2>
-<p class="muted small">Score to nie gwiazdki listy, tylko: zgoda niezależnych kuratorów
-(czyli w ilu różnych listach narzędzie występuje), jakość listy, własne gwiazdki
-narzędzia z GitHub API, żywy link, opis i kompletność metadanych.</p>
-<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
-./awesome why nmap                 # rozkład punktów
-./awesome mentions nmap            # wszystkie listy, w których jest
-./awesome info nmap                # szczegóły + komenda instalacji
-./awesome list vinta/awesome-python # narzędzia z jednej listy
+./awesome info nmap
+./awesome mentions nmap
+./awesome why nmap
+./awesome list vinta/awesome-python
+./awesome repos osint
 </pre>
 
-<h2>Twoja własna lista</h2>
-<p class="muted small">Znalazłeś coś, co działa? Włóż to od razu na swoją listę.
-Na końcu wygeneruj Markdown do wklejenia we własnym README.</p>
+<h2>Zaufanie i bezpieczeństwo danych</h2>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome audit
+./awesome audit owner/repo
+./awesome untrusted
+./awesome leaks [--repo] [--readmes] [--no-db] [--pattern REGEX]
+./awesome selfcheck
+</pre>
+<p class="small dim"><code>audit</code> wykrywa podejrzane listy/linki (sygnał do ręcznego sprawdzenia, nie skaner malware). <code>untrusted</code> skanuje opisy pod prompt injection. <code>leaks</code> robi lokalny skan możliwych sekretów.</p>
+
+<h2>Twoja lista / watch / instalacja</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
 ./awesome shortlist add nmap --note "do skanowania"
 ./awesome shortlist
 ./awesome shortlist emit --out moja-lista.md
+./awesome watch add vinta/awesome-python
+./awesome install nmap
 </pre>
-<p class="small dim">W przeglądarce: przycisk <b>☆ Do mojej listy</b> na stronie narzędzia,
-potem link <b>Moja lista</b> → <b>Markdown do wklejenia</b>. W TUI: klawisz <code>k</code>.</p>
+<p class="small dim"><code>watch</code> śledzi repozytoria list; <code>shortlist</code> zbiera narzędzia.</p>
 
-<h2>Podłącz lokalnego agenta AI (MCP)</h2>
-<p class="muted small">Katalog jako źródło narzędzi dla agenta — lokalnie,
-bez kluczy API i bez wysyłania czegokolwiek do sieci. Ranking oparty o zgodę
-niezależnych kuratorów, nie o to, co najczęściej wypisane w jednym README.</p>
+<h2>MCP dla lokalnych agentów</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
-./awesome mcp --demo    # podgląd wymiany JSON-RPC
-./awesome mcp           # serwer dla agenta (stdio)
+./awesome mcp --demo
+./awesome mcp
 </pre>
-<p class="small">W <code>claude_desktop_config.json</code> (lub analogicznie w Cursorze):</p>
-<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
-{
-  "mcpServers": {
-    "awesome-core": {
-      "command": "/pełna/ścieżka/do/awesome-core2/awesome",
-      "args": ["mcp"]
-    }
-  }
-}
-</pre>
-<p class="small dim">Narzędzia serwera: <code>search_tools</code>,
-<code>find_undiscovered_tools</code>, <code>explain_tool</code>,
-<code>lists_with_tool</code>, <code>catalog_facets</code>. Serwer czyta bazę
-i nic nie zapisuje.</p>
 
-<h2>TUI</h2>
+<h2>Dane i interfejsy</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome stats
+./awesome refresh [--full] [--download] [--local]
+./awesome download [topic] [--limit N]
+./awesome build
+./awesome enrich [--limit N]
+./awesome backfill [--force]
+./awesome validate [--limit N]
+./awesome export json --out tools.json
 ./awesome tui
+./awesome web [port]
 </pre>
-<p class="small dim"><code>/</code> szukaj · <code>l</code> język · <code>o</code> platforma ·
-<code>d</code> domena · <code>s</code> sort · <code>a</code> wyczyść filtry ·
-<code>g</code> perełki · <code>u</code> niedoceniane ·
-<code>Enter</code> szczegóły · <code>k</code> do mojej listy · <code>i</code> instalacja · <code>?</code> pomoc · <code>q</code> wyjście</p>
 
-<h2>Dane i eksport</h2>
+{% else %}
+<h2 style="margin-top:0;">Awesome Core — local catalog of tools from awesome lists</h2>
+<p class="muted">One engine (SQLite + FTS5), four interfaces: <b>CLI</b>, <b>TUI</b>, <b>Web</b>, and <b>MCP</b> for local agents. After downloading lists, everything works locally with zero network.</p>
+
+<h2>Nothing runs in the background</h2>
+<p class="muted small">No cron jobs, daemons, or hidden processes. Refresh is manual — one command or the button on <a href="/refresh">/refresh</a>. Each step prints logs and waits for completion.</p>
+
+<h2>First run</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
-./awesome stats             # co jest w bazie
-./awesome validate --limit 100   # sprawdź martwe linki
-./awesome export json --out tools.json   # do pliku, który podasz
-./awesome export csv  --out tools.csv
-./awesome web              # Flask UI (port wypisuje na ekranie)
+./awesome start          # download lists → build DB → fetch list metadata
+./awesome start --full   # ...plus tool metadata (longer)
+./awesome status         # database state and what to refresh
+./awesome doctor         # diagnose common problems
 </pre>
-<p class="muted small">Flaska nie musisz instalować ręcznie — przy pierwszym
-<code>./awesome web</code> program tworzy <code>venv</code> i instaluje
-<code>requirements.txt</code>, wypisując każdy krok.</p>
+<p class="small dim">On Windows: <code>awesome.cmd start</code>. Flask does not need manual install — first <code>./awesome web</code> bootstraps the environment and prints each step.</p>
 
-<h2>Limity, o których trzeba wiedzieć</h2>
-<ul class="muted small">
-  <li>Wyszukiwarka GitHuba zwraca maks. <b>1000 wyników na zapytanie</b> — dlatego
-      <code>./awesome download</code> używa kilku zapytań i skaluje wyniki.</li>
-  <li>Prawdziwy język narzędzia znamy tylko tam, gdzie doszedł <code>./awesome enrich</code>;
-      bez tego <code>lang</code> bywa <code>?</code>.</li>
-  <li>Linki poza GitHubem sprawdzamy tylko jawnie: <code>./awesome validate --non-github --limit 500</code>.</li>
-</ul>
-
-<h2>Czy katalog można zatruć?</h2>
-<p class="muted small">Katalog powstaje z cudzych repozytoriów, więc ktoś może
-celowo wstawić fałszywą listę, która zbiera wejścia. Jedna komenda mówi, które
-listy wyglądają podejrzanie:</p>
+<h2>Search</h2>
 <pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
-./awesome audit                       # 0 gwiazdek przy wielu linkach, jeden właściciel,
-                                     # martwe linki, klony, podszywane domeny
-./awesome audit owner/repo            # audyt jednego repozytorium
-./awesome selfcheck                  # czy wyszukiwanie znajduje 15 znanych narzędzi
+./awesome search nmap
+./awesome search "port scanner" --lang python --os linux --domain security
+./awesome search osint --min-consensus 3 --sort stars
 </pre>
-<p class="small"><b>To nie jest skaner złośliwego oprogramowania.</b> Sygnał mówi
-„obejrzyć ręcznie", nie „złośliwe". Stan na 6 października 2026: 7 list
-wartych obejrzenia, 1 podejrzany link, zero potwierdzonych ataków. Ranking broni
-się sam: narzędzie musi mieć zgodę dwóch niezależnych list, a kopie się nie
-liczą. Opisy z obcych list trafiające do modelu przechodzą przez filtr
-prompt-injection.</p>
+<p class="small dim">Filters: <code>--lang</code> <code>--os</code> <code>--domain</code> <code>--list</code> <code>--min-stars</code> <code>--min-consensus</code> <code>--sort score|stars|consensus|underrated|gem|name</code> <code>--alive</code>. Filters combine with AND.</p>
 
-<h2>Bezpieczeństwo</h2>
-<p class="muted small">Sygnały przy repozytoriach (archiwalne, dawno nieaktualizowane)
-to wskazówki do sprawdzenia, a nie etykieta bezpieczeństwa. Zawsze przejrzyj kod
-i release'y przed instalacją. Instalacja z weba to wyłącznie <code>git clone</code>
-do katalogu narzędzi — nie jest to terminal.</p>
-<p class="muted small">README jest jednym źródłem prawdy: opisuje też skąd biorą się
-listy, dlaczego nic z cudzego repozytorium nie jest wykonywane i jedyne miejsce,
-gdzie opis z obcej listy trafia do kontekstu modelu (MCP).</p>
+<h2>Lists and facets</h2>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome langs | platforms | domains
+./awesome lists
+./awesome clones
+./awesome underrated [--lang X]
+./awesome gems [--lang X]
+./awesome consensus [--limit N]
+./awesome top [n]
+</pre>
+
+<h2>Tools and lists</h2>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome info nmap
+./awesome mentions nmap
+./awesome why nmap
+./awesome list vinta/awesome-python
+./awesome repos osint
+</pre>
+
+<h2>Trust and data safety</h2>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome audit
+./awesome audit owner/repo
+./awesome untrusted
+./awesome leaks [--repo] [--readmes] [--no-db] [--pattern REGEX]
+./awesome selfcheck
+</pre>
+<p class="small dim"><code>audit</code> flags suspicious lists/links (manual-review signal, not a malware scanner). <code>untrusted</code> scans descriptions for prompt injection. <code>leaks</code> performs a local scan for possible secrets.</p>
+
+<h2>Your list / watch / install</h2>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome shortlist add nmap --note "for scanning"
+./awesome shortlist
+./awesome shortlist emit --out my-list.md
+./awesome watch add vinta/awesome-python
+./awesome install nmap
+</pre>
+<p class="small dim"><code>watch</code> tracks list repositories; <code>shortlist</code> collects tools.</p>
+
+<h2>MCP for local agents</h2>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome mcp --demo
+./awesome mcp
+</pre>
+
+<h2>Data and interfaces</h2>
+<pre style="background:var(--panel2);border:1px solid var(--border);padding:0.8rem;overflow-x:auto;">
+./awesome stats
+./awesome refresh [--full] [--download] [--local]
+./awesome download [topic] [--limit N]
+./awesome build
+./awesome enrich [--limit N]
+./awesome backfill [--force]
+./awesome validate [--limit N]
+./awesome export json --out tools.json
+./awesome tui
+./awesome web [port]
+</pre>
+{% endif %}
+
+<h2>{% if lang == 'pl' %}Bezpieczeństwo{% else %}Security{% endif %}</h2>
+<p class="muted small">{% if lang == 'pl' %}Sygnały przy repozytoriach to wskazówki do sprawdzenia, nie etykieta bezpieczeństwa. Zawsze przejrzyj kod i release'y przed instalacją. Instalacja z weba to wyłącznie <code>git clone</code> do katalogu narzędzi.{% else %}Repository signals are review hints, not a security label. Always review code and releases before installing. Web install is only <code>git clone</code> into the tools directory.{% endif %}</p>
 {% endblock %}

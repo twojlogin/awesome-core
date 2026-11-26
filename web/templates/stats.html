@@ -1,26 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Statystyki — Awesome Core{% endblock %}
+{% block title %}{% if lang == 'pl' %}Statystyki — Awesome Core{% else %}Statistics — Awesome Core{% endif %}{% endblock %}
 {% block content %}
-<h2 style="margin-top:0;">Statystyki bazy</h2>
+<h2 style="margin-top:0;">{% if lang == 'pl' %}Statystyki bazy{% else %}Database statistics{% endif %}</h2>
 <div class="grid">
 <div>
 <table class="data">
-    <tr><th>narzędzia (unikalne URL)</th><td>{{ "{:,}".format(stats.total) }}</td></tr>
-    <tr><th>wzmianki w listach</th><td>{{ "{:,}".format(mentions) }}</td></tr>
-    <tr><th>listy</th><td>{{ repos.total }}</td></tr>
-    <tr><th>listy z metadanymi</th><td>{{ repos.with_meta }}</td></tr>
-    <tr><th>listy archiwalne</th><td>{{ repos.archived }}</td></tr>
-    <tr><th>narzędzia w &gt;1 liście (zgoda)</th><td>{{ "{:,}".format(consensus) }}</td></tr>
-    <tr><th>linki sprawdzone / żywe</th><td>{{ "{:,}".format(alive) }} z {{ "{:,}".format(stats.with_meta) }}</td></tr>
-    <tr><th>linki martwe</th><td>{{ "{:,}".format(stats.dead) }}</td></tr>
-    <tr><th>linki nie sprawdzone</th><td>{{ "{:,}".format(stats.unchecked) }}</td></tr>
-    <tr><th>z opisem</th><td>{{ "{:,}".format(stats.with_desc) }}</td></tr>
-    <tr><th>sekcje</th><td>{{ stats.sections }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}narzędzia (unikalne URL){% else %}tools (unique URLs){% endif %}</th><td>{{ "{:,}".format(stats.total) }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}wzmianki w listach{% else %}list mentions{% endif %}</th><td>{{ "{:,}".format(mentions) }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}listy{% else %}lists{% endif %}</th><td>{{ repos.total }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}listy z metadanymi{% else %}lists with metadata{% endif %}</th><td>{{ repos.with_meta }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}listy archiwalne{% else %}archived lists{% endif %}</th><td>{{ repos.archived }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}narzędzia w &gt;1 liście (zgoda){% else %}tools in &gt;1 list (consensus){% endif %}</th><td>{{ "{:,}".format(consensus) }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}linki sprawdzone / żywe{% else %}links checked / alive{% endif %}</th><td>{{ "{:,}".format(alive) }} {% if lang == 'pl' %}z{% else %}of{% endif %} {{ "{:,}".format(stats.with_meta) }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}linki martwe{% else %}dead links{% endif %}</th><td>{{ "{:,}".format(stats.dead) }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}linki nie sprawdzone{% else %}unchecked links{% endif %}</th><td>{{ "{:,}".format(stats.unchecked) }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}z opisem{% else %}with description{% endif %}</th><td>{{ "{:,}".format(stats.with_desc) }}</td></tr>
+    <tr><th>{% if lang == 'pl' %}sekcje{% else %}sections{% endif %}</th><td>{{ stats.sections }}</td></tr>
 </table>
 
-<h2>Listy z najwyższą oceną jakości</h2>
+<h2>{% if lang == 'pl' %}Listy z najwyższą oceną jakości{% else %}Highest-quality lists{% endif %}</h2>
 <table class="data">
-    <tr><th>lista</th><th>jakość</th><th>narzędzi</th></tr>
+    <tr><th>{% if lang == 'pl' %}lista{% else %}list{% endif %}</th><th>{% if lang == 'pl' %}jakość{% else %}quality{% endif %}</th><th>{% if lang == 'pl' %}narzędzi{% else %}tools{% endif %}</th></tr>
     {% for row in best_lists %}
     <tr><td><a href="/list/{{ row.full_name }}">{{ row.full_name }}</a></td><td class="score">{{ "%.2f"|format(row.quality) }}</td><td>{{ row.unique_tool_count }}</td></tr>
     {% endfor %}

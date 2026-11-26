@@ -2,6 +2,7 @@
 """core/status.py — stan danych i plan odświeżenia (bez automatyki w tle)."""
 
 import calendar
+import json
 import time
 from pathlib import Path
 
@@ -108,12 +109,19 @@ def collect(data_dir=None):
                    f"({github_no_meta} narzędzi bez własnych gwiazdek)",
             "command": "./awesome enrich",
         })
-    steps.append({
-        "id": "build",
-        "label": "Przebudować bazę",
-        "why": "po każdym pobraniu/enrichu",
-        "command": "./awesome build",
-    })
+    last_build = meta.get("last_build", "")
+    last_backfill = meta.get("last_backfill", "")
+    last_enrich = meta.get("last_enrich", "")
+    needs_build = (not last_build) or (
+        bool(last_backfill) and last_backfill > last_build
+    ) or (bool(last_enrich) and last_enrich > last_build)
+    if needs_build:
+        steps.append({
+            "id": "build",
+            "label": "Przebudować bazę",
+            "why": "po backfill/enrichu albo po nowym buildzie",
+            "command": "./awesome build",
+        })
 
     return {
         "ready": True,
@@ -171,13 +179,106 @@ def render(status):
         f"  ostatni enrich:   {status['last_enrich'] or '—'}"
         + (f" ({status['last_enrich_age']})" if status["last_enrich_age"] else "")
         + ("  ← W TRAKCIE" if status.get("enrich_running") else ""),
-        "",
-        "Do odświeżenia (nic nie działa samo):",
     ]
-    for step in status["steps"]:
-        lines.append(f"  - {step['label']}: {step['command']}")
-        if step.get("why"):
-            lines.append(f"      {step['why']}")
-    lines.append("")
-    lines.append("Wszystko naraz: ./awesome refresh")
+    steps = status.get("steps") or []
+    if steps:
+        lines.append("")
+        lines.append("Do odświeżenia (nic nie działa samo):")
+        for step in steps:
+            lines.append(f"  - {step['label']}: {step['command']}")
+            if step.get("why"):
+                lines.append(f"      {step['why']}")
+        lines.append("")
+        has_enrich = any(s.get("id") == "enrich" for s in steps)
+        if has_enrich:
+            lines.append("Szybko: ./awesome refresh  |  Pełne (z enrich): ./awesome refresh --full")
+        else:
+            lines.append("Wszystko naraz: ./awesome refresh")
+    else:
+        lines.append("")
+        lines.append("Wszystko aktualne. Nic nie trzeba odświeżać.")
+    return lines
+
+
+SNAPSHOT_KEYS = [
+    "tools", "mentions", "lists", "lists_total", "readmes",
+    "alive", "dead", "nongithub_links", "db_size_mb",
+    "repos_to_fetch", "github_without_own_meta", "lists_without_meta",
+]
+
+
+def snapshot_path(data_dir=None):
+    return store.db_path(data_dir).parent / "status_snapshot.json"
+
+
+def history_path(data_dir=None):
+    return store.db_path(data_dir).parent / "status_history.jsonl"
+
+
+def save_snapshot(status, data_dir=None):
+    """Zapisz bieżący snapshot (ostatni + historia JSONL)."""
+    if not status.get("ready"):
+        return None
+    snap = {k: status.get(k) for k in SNAPSHOT_KEYS}
+    snap["saved_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    snap["last_build"] = status.get("last_build", "")
+    snap["last_backfill"] = status.get("last_backfill", "")
+    snap["last_enrich"] = status.get("last_enrich", "")
+    path = snapshot_path(data_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(snap, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        with history_path(data_dir).open("a", encoding="utf-8") as f:
+            f.write(json.dumps(snap, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+    return path
+
+
+def load_snapshot(data_dir=None):
+    path = snapshot_path(data_dir)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def diff_snapshot(current, previous):
+    """Porównaj dwa snapshoty. Zwraca listę zmian tekstowych."""
+    if not current.get("ready") or not previous:
+        return []
+    lines = []
+    prev_at = previous.get("saved_at", "?")
+    lines.append(f"Porównanie z poprzednim snapshotem: {prev_at}")
+    labels = {
+        "tools": "narzędzia",
+        "mentions": "wzmianki",
+        "lists": "listy w bazie",
+        "lists_total": "listy razem",
+        "readmes": "README lokalnie",
+        "alive": "linki żywe",
+        "dead": "linki martwe",
+        "nongithub_links": "poza GitHubem",
+        "db_size_mb": "baza MB",
+        "repos_to_fetch": "repo do enrich",
+        "github_without_own_meta": "narzędzia GH bez meta",
+        "lists_without_meta": "listy bez meta",
+    }
+    for key in SNAPSHOT_KEYS:
+        old = previous.get(key)
+        new = current.get(key)
+        if old is None or new is None:
+            continue
+        if old == new:
+            continue
+        delta = new - old
+        if isinstance(delta, float):
+            lines.append(f"  {labels.get(key, key)}: {old:.1f} -> {new:.1f} ({delta:+.1f})")
+        else:
+            sign = "+" if delta > 0 else ""
+            lines.append(f"  {labels.get(key, key)}: {old:,} -> {new:,} ({sign}{delta:,})")
+    if len(lines) == 1:
+        lines.append("  (brak zmian w kluczowych liczbach)")
     return lines

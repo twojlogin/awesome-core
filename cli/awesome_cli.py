@@ -1,17 +1,98 @@
 #!/usr/bin/env python3
 """
+awesome — Awesome Core CLI: local search and ranking for awesome-list tools.
+
+FIRST RUN (start here):
+  awesome start                      — download lists, build DB, fetch list metadata
+  awesome search nmap               — search tools
+  awesome web                        — open the web UI
+  awesome doctor                     — diagnose common problems
+
+Daily use:
+  awesome status                    — database state and what to refresh
+  awesome refresh                   — quick refresh: light backfill + build (skips download if READMEs exist)
+      --full                        — full refresh: download + backfill + enrich (limited) + build
+      --download                    — force README download even if local READMEs exist
+      --local                       — local only: skip download
+      --enrich-limit N              — enrich limit in full mode (default 1000)
+
+Search:
+  awesome search <query>              — search tools offline
+      --limit N                       — number of results (default 20)
+      --lang <language>               — filter by language (python, powershell, go…)
+      --os <platform>                 — filter by platform (windows, linux, docker…)
+      --domain <domain>               — osint, security, network, devops, ml…
+      --list <owner/repo>             — only from one list
+      --min-stars N                   — minimum tool stars
+      --min-consensus N               — minimum independent list mentions
+      --sort score|stars|consensus|underrated|gem|name
+      --alive                         — only checked, alive links
+
+Lists and facets:
+  awesome langs | platforms | domains — what's in the database
+  awesome lists                       — highest-quality lists
+  awesome clones                      — copy/fork lists (affects ranking)
+  awesome untrusted                   — scan descriptions for prompt injection
+  awesome leaks                       — local scan for possible secret leaks
+      --readmes [path]                — also scan raw README files (*.md)
+      --repo [path]                   — scan tracked repo files (including hidden)
+      --no-db                         — skip tool DB scan (e.g. audit repo only)
+      --pattern REGEX                 — extra pattern (can be repeated)
+  awesome audit                       — check whether the catalog is poisoned by fake lists
+  awesome selfcheck                   — verify search finds 15 known tools
+  awesome audit owner/repo            — audit a single repository
+  awesome mcp                         — MCP server (stdio) for local agents
+  awesome mcp --demo                  — show JSON-RPC exchange
+  awesome list <owner/repo>           — tools from one list
+  awesome mentions <url|name>         — how many lists mention a tool
+  awesome why <url|name>              — ranking breakdown
+  awesome underrated [--lang X]       — good tools from small lists
+  awesome gems [--lang X]             — hidden gems
+  awesome repos <query>               — search lists/repositories
+  awesome top [n]                     — top lists by stars
+  awesome consensus [--limit N]       — tools with strongest curator consensus
+  awesome stats                       — counts: tools, lists, languages, links
+  awesome info <url|name>             — tool details + install command
+  awesome watch add|list|check|remove — tracked list repositories (separate from shortlist)
+
+Data management:
+  awesome download [topic] [--limit N] — download awesome lists (works on Windows)
+  awesome build                       — rebuild database from READMEs
+  awesome enrich [--limit N]          — tool repository metadata (GitHub)
+  awesome backfill [--force]          — missing list metadata
+  awesome validate [--limit N]        — check dead links
+  awesome install <name>             — git clone a tool (runs only git)
+  awesome export json|csv [path]     — export database
+
+Your own list:
+  awesome shortlist add nmap --note   — add a tool
+  awesome shortlist                   — show your list
+  awesome shortlist emit --out my.md  — Markdown to paste into your list
+
+Other:
+  awesome tui                         — terminal UI (curses)
+  awesome web [port]                  — start Flask web UI
+  awesome demo | stats | info | install | uninstall | installed
+  awesome create|add|collection|collections | audit | watch | fetch | topic | check
+"""
+
+HELP_EN = __doc__
+
+HELP_PL = """
 awesome — CLI Awesome Core: lokalne wyszukiwanie i sortowanie awesome list.
 
 PIERWSZE URUCHOMIENIE (zacznij tutaj):
-  awesome start                      — robi wszystko za Ciebie i mówi co się dzieje
-  awesome search nmap               — szukaj
-  awesome web                        — przeglądarka
-  awesome doctor                     — coś nie działa? tu jest odpowiedź
+  awesome start                      — pobiera listy, buduje bazę, pobiera metadane list
+  awesome search nmap               — szukaj narzędzi
+  awesome web                        — uruchom przeglądarkę
+  awesome doctor                     — diagnostyka typowych problemów
 
 Codziennie:
   awesome status                    — co jest w bazie i co warto odświeżyć
-  awesome refresh                   — szybkie odświeżenie: download + lekki backfill braków + build
-      --full                        — pełne odświeżenie: + backfill + enrich (z limitem) + build
+  awesome refresh                   — szybkie odświeżenie: lekki backfill + build (bez download, jeśli README są lokalnie)
+      --full                        — pełne odświeżenie: download + backfill + enrich (z limitem) + build
+      --download                    — wymuś pobieranie README nawet gdy są lokalnie
+      --local                       — tylko lokalnie: bez download
       --enrich-limit N              — limit enrich w trybie pełnym (domyślnie 1000)
 
 Wyszukiwanie:
@@ -74,7 +155,28 @@ Inne:
   awesome create|add|collection|collections | audit | watch | fetch | topic | check
 """
 
+
+def cli_lang(args=None):
+    """EN by default; PL optional via AWESOME_LANG=pl or --lang pl."""
+    env = os.environ.get("AWESOME_LANG", "").lower()
+    if env.startswith("pl"):
+        return "pl"
+    if args:
+        for i, a in enumerate(args):
+            if a == "--lang" and i + 1 < len(args):
+                return "pl" if str(args[i + 1]).lower().startswith("pl") else "en"
+            if a.startswith("--lang="):
+                v = a.split("=", 1)[1].lower()
+                return "pl" if v.startswith("pl") else "en"
+    return "en"
+
+
+def help_text(args=None):
+    return HELP_PL if cli_lang(args) == "pl" else HELP_EN
+
+
 import json
+import os
 import subprocess
 import difflib
 import re
@@ -102,7 +204,8 @@ INDEX_FILE = BASE_DIR / "offline-db" / "data" / "index.json"
 
 def print_tools(results, limit=20, show_url=True):
     if not results:
-        print("Brak wyników.")
+        msg = "Brak wyników." if os.environ.get("AWESOME_LANG", "").lower().startswith("pl") else "No results."
+        print(msg)
         return
     shown_rows = results[:limit]
     for i, tool in enumerate(shown_rows, 1):
@@ -688,12 +791,27 @@ def cmd_clones(tools_db, args):
     print("Sprawdź konkretne narzędzie: ./awesome why <nazwa>")
 
 
-def cmd_status():
+def cmd_status(args=None):
     from core import status as status_mod
 
+    args = args or []
     print("Odczytuję stan lokalnej bazy...", flush=True)
-    for line in status_mod.render(status_mod.collect(BASE_DIR / "data")):
+    current = status_mod.collect(BASE_DIR / "data")
+    for line in status_mod.render(current):
         print(line)
+
+    prev = status_mod.load_snapshot(BASE_DIR / "data")
+    if prev and current.get("ready"):
+        diff = status_mod.diff_snapshot(current, prev)
+        if diff:
+            print()
+            for line in diff:
+                print(line)
+
+    if "--no-save" not in args and current.get("ready"):
+        path = status_mod.save_snapshot(current, BASE_DIR / "data")
+        if path and "--quiet" not in args:
+            print(f"\nSnapshot zapisany: {path}")
 
 
 REQUIRED_TOOLS = [
@@ -864,16 +982,17 @@ def cmd_start(args):
 def cmd_refresh(args):
     """Odświeżanie na żądanie, bez automatu w tle.
 
-    Domyślnie (quick): download + lekki backfill tylko braków/nowych list
-    (z retry_after) + build. Bez enrich. Pełne odświeżenie: --full (albo
-    jawne kroki), wtedy dochodzi backfill i enrich z limitem.
+    Domyślnie (quick): lekki backfill tylko braków/nowych list
+    (z retry_after) + build. Download jest pomijany, jeśli README są już
+    lokalnie (wymuś: --download / --full). Bez enrich. Pełne odświeżenie:
+    --full (albo jawne kroki), wtedy dochodzi backfill i enrich z limitem.
     """
     steps = [a for a in args if not a.startswith("-")]
     limit = _flag_int(args, "--enrich-limit", 1000)
     dry_run = "--dry-run" in args
     full = "--full" in args
     wanted = set(steps) & {"download", "backfill", "enrich", "build"}
-    quick = not full and not wanted and "--quick" not in args or ("--quick" in args)
+    local_only = any(flag in args for flag in ("--local", "--offline", "--skip-download"))
 
     def enabled(name, heavy=False):
         if f"--skip-{name}" in args:
@@ -896,35 +1015,58 @@ def cmd_refresh(args):
         "build": enabled("build", heavy=False),
     }
 
-    print("[*] Odświeżanie bazy — na żądanie, bez automatu w tle.")
+    # README już są lokalnie? Nie pobieraj ponownie, chyba że user wyraźnie chce.
+    readmes = 0
+    pl = os.environ.get("AWESOME_LANG", "").lower().startswith("pl")
+    readme_dir = BASE_DIR / "offline-db" / "data" / "readmes"
+    if readme_dir.exists():
+        readmes = sum(1 for _ in readme_dir.glob("*.md"))
+    if plan["download"] and not full and "download" not in wanted and "--download" not in args:
+        if local_only or readmes > 0:
+            plan["download"] = False
+            if readmes > 0:
+                msg = (f"[*] Mam {readmes} lokalnych README — pomijam download. (wymuś: --download)"
+                       if pl else
+                       f"[*] Found {readmes} local READMEs — skipping download. (force: --download)")
+                print(msg)
+            else:
+                print("[*] Tryb lokalny — pomijam download." if pl else "[*] Local mode — skipping download.")
+
+    print("[*] Odświeżanie bazy — na żądanie, bez automatu w tle."
+          if pl else "[*] Refreshing database — on demand, nothing runs in background.")
     if not full and not wanted:
-        print("    tryb szybki: download + lekki backfill (tylko braki, retry_after) + build.")
-        print("    pełne odświeżenie: ./awesome refresh --full  (albo dopisz: backfill enrich)")
+        if pl:
+            print("    tryb szybki: lekki backfill (tylko braki, retry_after) + build; download pomijam, jeśli README są lokalnie.")
+            print("    pełne odświeżenie: ./awesome refresh --full  (albo wymuś download: --download)")
+        else:
+            print("    quick mode: light backfill (missing/retry_after only) + build; download skipped if READMEs exist locally.")
+            print("    full refresh: ./awesome refresh --full  (or force download: --download)")
     for name, on in plan.items():
         suffix = ""
         if name == "backfill" and on and not full and not ("backfill" in wanted):
-            suffix = " (tylko braki)"
+            suffix = " (tylko braki)" if pl else " (missing only)"
         if name == "enrich" and on:
             suffix = f" (limit {limit})"
-        print(f"    {name}: {'tak' if on else 'pomijam'}{suffix}")
+        state = ("tak" if on else "pomijam") if pl else ("yes" if on else "skip")
+        print(f"    {name}: {state}{suffix}")
     if dry_run:
-        print("\n(dry-run: nic nie uruchamiam)")
+        print("\n(dry-run: nic nie uruchamiam)" if pl else "\n(dry-run: nothing executed)")
         return
 
     light_backfill = plan["backfill"] and (not full) and ("backfill" not in wanted)
 
     if plan["download"]:
         topic = steps[0] if steps and not steps[0].isdigit() else "awesome-list"
-        print(f"\n=== pobieranie list (topic: {topic}) ===")
+        print(f"\n=== {'pobieranie list' if pl else 'downloading lists'} (topic: {topic}) ===")
         cmd_topic(topic)
     if plan["backfill"]:
-        print("\n=== metadane list ===")
+        print("\n=== metadane list ===" if pl else "\n=== list metadata ===")
         cmd_backfill(limit=None, force=False, only_missing=light_backfill)
     if plan["enrich"]:
-        print(f"\n=== metadane narzędzi (limit {limit}) ===")
+        print(f"\n=== {'metadane narzędzi' if pl else 'tool metadata'} (limit {limit}) ===")
         cmd_enrich(limit)
     if plan["build"]:
-        print("\n=== przebudowa bazy ===")
+        print("\n=== przebudowa bazy ===" if pl else "\n=== rebuilding database ===")
         cmd_build()
     print()
     cmd_status()
@@ -1266,14 +1408,15 @@ def parse_search_args(args):
 
 def main():
     if len(sys.argv) < 2:
-        print(__doc__)
+        print(help_text(sys.argv[1:]))
         return
 
     cmd = sys.argv[1]
     args = sys.argv[2:]
+    lang = cli_lang(sys.argv[1:])
 
     if cmd == "--help" or cmd == "-h" or cmd == "help":
-        print(__doc__)
+        print(help_text(sys.argv[1:]))
         return
 
     def dbs():
@@ -1283,7 +1426,8 @@ def main():
     if cmd == "search" and args:
         query, filters = parse_search_args(args)
         if not query:
-            print("Użycie: awesome search <zapytanie> [--lang python --os windows]")
+            pl = os.environ.get("AWESOME_LANG", "").lower().startswith("pl")
+            print("Użycie: awesome search <zapytanie> [--lang python --os windows]" if pl else "Usage: awesome search <query> [--lang python --os windows]")
             return
         tools_db, _, _ = dbs()
         min_consensus = filters.pop("min_consensus", 0)
@@ -1297,11 +1441,14 @@ def main():
         # Cztery narzędzia o nazwie "Sherlock" to cztery różne projekty —
         # bez właściciela laik widzi same duplikaty.
         tools_db.disambiguate(results)
-        print(f"\nSzukaj: {query}")
+        pl = os.environ.get("AWESOME_LANG", "").lower().startswith("pl")
+        print(f"\n{'Szukaj' if pl else 'Search'}: {query}")
         shown = {k: v for k, v in filters.items() if v not in (None, 0, False, "")}
         if shown:
-            print("Filtry: " + " ".join(f"{k}={v}" for k, v in shown.items()))
-        print(f"Znaleziono: {len(results)}\n")
+            label = "Filtry" if pl else "Filters"
+            print(f"{label}: " + " ".join(f"{k}={v}" for k, v in shown.items()))
+        label = "Znaleziono" if pl else "Found"
+        print(f"{label}: {len(results)}\n")
         hints = tools_db.narrowing_hints(query, filters, len(results))
         if hints:
             key, value, count = hints[0]
@@ -1398,7 +1545,7 @@ def main():
         tools_db, _, _ = dbs()
         cmd_clones(tools_db, args)
     elif cmd in {"status", "stan"}:
-        cmd_status()
+        cmd_status(args)
     elif cmd in {"refresh", "odswiez"}:
         cmd_refresh(args)
     elif cmd in {"build", "rebuild"}:
@@ -1453,15 +1600,25 @@ def main():
         if cmd in known:
             # Komenda jest, ale bez argumentu. Dawniej to wyglądało jak
             # "nieznana komenda", bo gałąź dispatchera wymagała argumentów.
-            print(f"`awesome {cmd}` potrzebuje argument — np. nazwę narzędzia "
-                  f"albo zapytanie.")
-            print(f"Wszystkie komendy: ./awesome help")
+            if lang == "pl":
+                print(f"`awesome {cmd}` potrzebuje argumentu — np. nazwy narzędzia albo zapytania.")
+                print("Wszystkie komendy: ./awesome help --lang pl")
+            else:
+                print(f"`awesome {cmd}` requires an argument — e.g. a tool name or query.")
+                print("All commands: ./awesome help")
             return 2
-        print(f"Nieznana komenda: {cmd}")
+        if lang == "pl":
+            print(f"Nieznana komenda: {cmd}")
+        else:
+            print(f"Unknown command: {cmd}")
         close = difflib.get_close_matches(cmd, known, n=3)
         if close:
-            print("Czy chodziło o: " + ", ".join(close))
-        print("Wszystkie komendy: ./awesome help")
+            label = "Czy chodziło o" if lang == "pl" else "Did you mean"
+            print(f"{label}: " + ", ".join(close))
+        if lang == "pl":
+            print("Wszystkie komendy: ./awesome help --lang pl")
+        else:
+            print("All commands: ./awesome help")
         return 2
 
 

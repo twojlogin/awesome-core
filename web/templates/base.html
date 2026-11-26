@@ -127,6 +127,6 @@
 {% endwith %}
 {% block content %}{% endblock %}
 </main>
-<footer>local-first · baza SQLite · zero sieci po pobraniu · <a href="/stats">stats</a></footer>
+<footer>local-first · SQLite · {% if lang == 'pl' %}zero sieci po pobraniu{% else %}zero network after download{% endif %} · <a href="/stats">stats</a></footer>
 </body>
 </html>

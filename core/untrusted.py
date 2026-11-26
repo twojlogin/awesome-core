@@ -31,6 +31,10 @@ _PATTERNS = [
     (r"(you\s+must|you\s+should\s+now|always)\s+(immediately\s+)?"
      r"(run|execute|install|clone|download|call|invoke)\b", "nakaz działania", 0),
     (r"^\s*(system|assistant|user)\s*:\s*", "znacznik roli", re.MULTILINE),
+    (r"<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>|<<SYS>>|<</SYS>>|\[/?INST\]",
+     "znacznik promptu", 0),
+    (r"override\s+(your|all|the|previous|system)\s+"
+     r"(instructions?|prompts?|rules|settings)", "nadpisz instrukcje", 0),
     (r"<\s*(script|iframe|object|embed|form)\b", "tag HTML", 0),
     (r"\bon(error|load|click|mouseover)\s*=", "handler HTML", 0),
     # "JavaScript: Build your own 3D renderer" to tytuł kursu, nie atak —
@@ -40,7 +44,13 @@ _PATTERNS = [
     (r"data\s*:\s*(text/html|application/|image/svg)", "schemat URI", 0),
     (r"(curl|wget)\s+[^\s|]+\s*\|\s*(sudo\s+)?(ba|z|k)?sh", "pobierz i wykonaj", 0),
     (r"invoke-expression|\biex\s*\(", "PowerShell IEX", 0),
-    (r"(rm\s+-rf|mkfs\.|del\s+/[sf]\s)", "kasowanie danych", 0),
+    # Opisy narzędzi security często wspominają "rm -rf" jako przykład —
+    # samo wystąpienie to nie rozkaz. Flagujemy dopiero gdy wygląda na
+    # komendę z celem (ścieżka/wildcard/$/~) albo klasyczny target Windows.
+    (r"rm\s+-[a-z]*r[a-z]*f[a-z]*\s+(?:[/~.*$\\]|--no-preserve-root\b)",
+     "kasowanie danych", 0),
+    (r"mkfs(?:\.[a-z0-9]+)?\s+/dev/", "kasowanie danych", 0),
+    (r"del\s+/[a-z]*[sf][a-z]*(?:\s+/[a-z]+)*\s+[A-Za-z]:[\\/]", "kasowanie danych", 0),
 ]
 
 # IGNORECASE jest tu obowiązkowy, nie ozdoba: opis zaczyna się wielką literą
@@ -50,6 +60,8 @@ _COMPILED = [
     (re.compile(pattern, flags | re.IGNORECASE), label)
     for pattern, label, flags in _PATTERNS
 ]
+# ZWJ/ZWNJ (\u200c,\u200d) pomijamy: są legalne w emoji i niektórych pismach.
+_INVISIBLE = re.compile(r'[\u200b\u200e\u200f\u202a-\u202e\u2060-\u2069\ufeff]+')
 
 MAX_LEN = 300
 
@@ -63,6 +75,9 @@ def sanitize(text, limit=MAX_LEN):
         return "", []
     clean = " ".join(str(text).split())
     findings = []
+    clean, hits = _INVISIBLE.subn("[odfiltrowano: ukryty znak]", clean)
+    if hits:
+        findings.append(f"ukryty znak ×{hits}")
     for pattern, label in _COMPILED:
         clean, hits = pattern.subn(f"[odfiltrowano: {label}]", clean)
         if hits:

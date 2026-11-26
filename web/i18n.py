@@ -107,13 +107,15 @@ TRANSLATIONS = {
 
 
 def normalize_lang(lang):
-    lang = (lang or "").lower()
-    return "en" if lang == "en" else "pl"
+    lang = (lang or "").lower().replace("_", "-")
+    if lang.startswith("pl"):
+        return "pl"
+    return "en"
 
 
 def translate(lang, key, **kwargs):
     lang = normalize_lang(lang)
-    text = TRANSLATIONS.get(lang, {}).get(key) or TRANSLATIONS["pl"].get(key) or key
+    text = TRANSLATIONS.get(lang, {}).get(key) or TRANSLATIONS["en"].get(key) or TRANSLATIONS["pl"].get(key) or key
     if kwargs:
         try:
             return text.format(**kwargs)

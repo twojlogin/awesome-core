@@ -1,25 +1,25 @@
 {% extends "base.html" %}
 {% block title %}{{ title }} — Awesome Core{% endblock %}
 {% block content %}
-<div class="breadcrumb"><a href="/">start</a> / <a href="/lists">listy</a> / {{ title }}</div>
+<div class="breadcrumb"><a href="/">{{ t('home') }}</a> / <a href="/lists">{{ t('nav_lists') }}</a> / {{ title }}</div>
 <h2 style="margin-top:0;">{{ title }}</h2>
 
 {% if stats %}
 <p class="muted small">
-  {{ "{:,}".format(stats.count) }} narzędzi · {{ "{:,}".format(stats.stars) }}★ ·
-  jakość listy {{ "%.2f"|format(stats.quality) }} ·
-  <a href="/repo/{{ title }}">README listy</a> ·
-  <a href="/lists/clones">kopie i forki</a>
+  {{ "{:,}".format(stats.count) }} {% if lang == 'pl' %}narzędzi{% else %}tools{% endif %} · {{ "{:,}".format(stats.stars) }}★ ·
+  {% if lang == 'pl' %}jakość listy{% else %}list quality{% endif %} {{ "%.2f"|format(stats.quality) }} ·
+  <a href="/repo/{{ title }}">{% if lang == 'pl' %}README listy{% else %}List README{% endif %}</a> ·
+  <a href="/lists/clones">{% if lang == 'pl' %}kopie i forki{% else %}copies and forks{% endif %}</a>
 </p>
 {% if clones %}
 <p class="small" style="margin-bottom:0.6rem;">
   {% for clone in clones[:5] %}
     {% if clone.kind == 'kopia' %}
-      <span class="badge" title="{{ clone.shared }} wspólnych narzędzi">{{ 'kopia listy' if clone.direction == 'klon' else 'kanon dla' }} {{ clone.other }}</span>
+      <span class="badge" title="{{ clone.shared }} {% if lang == 'pl' %}wspólnych narzędzi{% else %}shared tools{% endif %}">{{ ('kopia listy' if clone.direction == 'klon' else 'kanon dla') if lang == 'pl' else ('list copy' if clone.direction == 'klon' else 'canonical for') }} {{ clone.other }}</span>
     {% elif clone.direction == 'fork' %}
-      <a class="badge" href="/list/{{ clone.other }}">fork tej listy</a>
+      <a class="badge" href="/list/{{ clone.other }}">{% if lang == 'pl' %}fork tej listy{% else %}fork of this list{% endif %}</a>
     {% else %}
-      <a class="badge" href="/list/{{ clone.other }}">fork z {{ clone.other }}</a>
+      <a class="badge" href="/list/{{ clone.other }}">{% if lang == 'pl' %}fork z{% else %}forked from{% endif %} {{ clone.other }}</a>
     {% endif %}
   {% endfor %}
 </p>
@@ -27,15 +27,15 @@
 {% for tool in items %}{% include "partials/tool_row.html" %}{% endfor %}
 
 {% else %}
-<p class="muted small"><a href="/repo/{{ title }}">README listy</a> · <a href="/lists">wszystkie listy</a></p>
+<p class="muted small"><a href="/repo/{{ title }}">{% if lang == 'pl' %}README listy{% else %}List README{% endif %}</a> · <a href="/lists">{% if lang == 'pl' %}wszystkie listy{% else %}all lists{% endif %}</a></p>
 {% for repo in items %}
 <div class="tool">
     <div class="row">
         <a href="/repo/{{ repo.full_name }}" class="name">{{ repo.full_name }}</a>
         {% if repo.stars %}<span class="score">★ {{ "{:,}".format(repo.stars) }}</span>{% endif %}
-        {% if repo.unique_tool_count %}<span class="badge">{{ repo.unique_tool_count }} narzędzi</span>{% endif %}
-        {% if repo.quality is defined %}<span class="badge" title="jakość listy">jakość {{ "%.2f"|format(repo.quality) }}</span>{% endif %}
-        {% if repo.archived %}<span class="badge bad">archiwalne</span>{% endif %}
+        {% if repo.unique_tool_count %}<span class="badge">{{ repo.unique_tool_count }} {% if lang == 'pl' %}narzędzi{% else %}tools{% endif %}</span>{% endif %}
+        {% if repo.quality is defined %}<span class="badge" title="{% if lang == 'pl' %}jakość listy{% else %}list quality{% endif %}">{% if lang == 'pl' %}jakość{% else %}quality{% endif %} {{ "%.2f"|format(repo.quality) }}</span>{% endif %}
+        {% if repo.archived %}<span class="badge bad">{% if lang == 'pl' %}archiwalne{% else %}archived{% endif %}</span>{% endif %}
     </div>
     {% if repo.description %}<div class="desc">{{ repo.description[:200] }}</div>{% endif %}
     <div class="meta">

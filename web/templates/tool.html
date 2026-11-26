@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ tool.name }} — Awesome Core{% endblock %}
 {% block content %}
-<div class="breadcrumb"><a href="javascript:history.back()">← wstecz</a> / {{ tool.name }}</div>
+<div class="breadcrumb"><a href="javascript:history.back()">← {% if lang == 'pl' %}wstecz{% else %}back{% endif %}</a> / {{ tool.name }}</div>
 
 <div class="panel">
     <div class="row">
@@ -10,46 +10,46 @@
         {% if tool.lang and tool.lang != '?' %}<a class="tag" href="/lang/{{ tool.lang }}">{{ tool.lang }}</a>{% endif %}
         {% for platform in (tool.platforms or []) %}<a class="tag" href="/os/{{ platform }}">{{ platform }}</a>{% endfor %}
         {% for domain in (tool.domains or []) %}<a class="tag" href="/domain/{{ domain }}">{{ domain }}</a>{% endfor %}
-        {% if tool.alive is sameas true %}<span class="good">✓ link żywy</span>
-        {% elif tool.alive is sameas false %}<span class="bad">✗ {{ tool.alive_reason or 'martwy link' }}</span>
-        {% else %}<span class="dim small">link nie sprawdzony</span>{% endif %}
+        {% if tool.alive is sameas true %}<span class="good">✓ {% if lang == 'pl' %}link żywy{% else %}alive{% endif %}</span>
+        {% elif tool.alive is sameas false %}<span class="bad">✗ {{ tool.alive_reason or ('martwy link' if lang == 'pl' else 'dead link') }}</span>
+        {% else %}<span class="dim small">{% if lang == 'pl' %}link nie sprawdzony{% else %}link not checked{% endif %}</span>{% endif %}
     </div>
     {% if tool.description %}<p class="muted" style="margin-top:0.6rem;">{{ tool.description }}</p>{% endif %}
     <div class="row" style="margin-top:0.7rem;">
-        <a href="{{ tool.url }}" target="_blank" class="tag">otwórz źródło ↗</a>
-        <a href="/mentions/{{ tool.url_norm }}" class="tag">w {{ mentions|length }} list(ach)</a>
+        <a href="{{ tool.url }}" target="_blank" class="tag">{% if lang == 'pl' %}otwórz źródło ↗{% else %}open source ↗{% endif %}</a>
+        <a href="/mentions/{{ tool.url_norm }}" class="tag">{% if lang == 'pl' %}w {{ mentions|length }} list(ach){% else %}in {{ mentions|length }} list(s){% endif %}</a>
         {% if install %}<code style="background:var(--panel2);padding:0.25rem 0.5rem;">{{ install.cmd }}</code>{% endif %}
         <form action="/tool/action" method="post" style="display:inline;">
             <input type="hidden" name="tool_name" value="{{ tool.name }}">
             <button name="action" value="install" type="submit"
-                    onclick="return confirm('Zainstalować {{ tool.name }}?');">▶ Zainstaluj</button>
+                    onclick="return confirm('{% if lang == 'pl' %}Zainstalować {{ tool.name }}?{% else %}Install {{ tool.name }}?{% endif %}');">▶ {% if lang == 'pl' %}Zainstaluj{% else %}Install{% endif %}</button>
         </form>
         <form action="/shortlist/add" method="post" style="display:inline;">
             <input type="hidden" name="tool" value="{{ tool.url_norm }}">
-            <input type="text" name="note" placeholder="notatka (opcjonalnie)" size="18">
-            <button type="submit" title="Włóż do własnej listy i wygeneruj Markdown">
-                {% if kept %}★ Jest na mojej liście{% else %}☆ Do mojej listy{% endif %}
+            <input type="text" name="note" placeholder="{% if lang == 'pl' %}notatka (opcjonalnie){% else %}note (optional){% endif %}" size="18">
+            <button type="submit" title="{% if lang == 'pl' %}Włóż do własnej listy i wygeneruj Markdown{% else %}Add to your list and generate Markdown{% endif %}">
+                {% if kept %}★ {% if lang == 'pl' %}Jest na mojej liście{% else %}On my list{% endif %}{% else %}☆ {% if lang == 'pl' %}Do mojej listy{% else %}Add to my list{% endif %}{% endif %}
             </button>
         </form>
     </div>
     <div class="small dim" style="margin-top:0.6rem;">
-        sekcja: <a href="/section/{{ tool.section }}">{{ tool.section }}</a>
+        {% if lang == 'pl' %}sekcja{% else %}section{% endif %}: <a href="/section/{{ tool.section }}">{{ tool.section }}</a>
         {% if tool.subsection %}/ {{ tool.subsection }}{% endif %}
-        · lista: <a href="/list/{{ tool.source_repo }}">{{ tool.source_repo }}</a> ({{ "{:,}".format(tool.source_stars) }}★)
-        · score {{ "%.1f"|format(tool.score) }} · niedoceniane {{ "%.1f"|format(tool.underrated) }}
+        · {% if lang == 'pl' %}lista{% else %}list{% endif %}: <a href="/list/{{ tool.source_repo }}">{{ tool.source_repo }}</a> ({{ "{:,}".format(tool.source_stars) }}★)
+        · score {{ "%.1f"|format(tool.score) }} · {% if lang == 'pl' %}niedoceniane{% else %}underrated{% endif %} {{ "%.1f"|format(tool.underrated) }}
     </div>
 </div>
 
 <div class="grid">
 <div>
-    <h2>Skąd ranking</h2>
+    <h2>{% if lang == 'pl' %}Skąd ranking{% else %}Why this ranking{% endif %}</h2>
     <table class="data">
         {% for key, value, weight, points in explain.rows %}
         <tr><td>{{ key }}</td><td>{{ "%.2f"|format(value) }}</td><td>× {{ "%.2f"|format(weight) }}</td><td class="score">{{ "%.1f"|format(points) }} pkt</td></tr>
         {% endfor %}
     </table>
 
-    <h2>Wzmianki w listach ({{ mentions|length }})</h2>
+    <h2>{% if lang == 'pl' %}Wzmianki w listach{% else %}List mentions{% endif %} ({{ mentions|length }})</h2>
     <table class="data">
         {% for mention in mentions %}
         <tr><td><a href="/repo/{{ mention.source_repo }}">{{ mention.source_repo }}</a></td><td class="dim">{{ mention.section }}</td></tr>
@@ -57,7 +57,7 @@
     </table>
 
     {% if excerpt_html %}
-    <h2>Fragment README listy</h2>
+    <h2>{% if lang == 'pl' %}Fragment README listy{% else %}List README excerpt{% endif %}</h2>
     {% if excerpt_toc %}<div class="panel">{{ excerpt_toc|safe }}</div>{% endif %}
     <div class="panel md md-box">{{ excerpt_html|safe }}</div>
     {% endif %}
@@ -65,7 +65,7 @@
 
 <div>
     {% if similar %}
-    <h2>Podobne</h2>
+    <h2>{% if lang == 'pl' %}Podobne{% else %}Similar{% endif %}</h2>
     {% for s in similar %}{% include "partials/tool_row.html" %}{% endfor %}
     {% endif %}
 </div>
