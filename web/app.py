@@ -598,8 +598,9 @@ def run_step(step, topic="awesome-list", limit=20000):
         safe_topic = re.sub(r"[^a-z0-9-]", "", safe_topic)
         code, log = run_script(
             "core/fetcher.py",
-            extra_args=[safe_topic, "--wide"],
+            extra_args=["--wide"],
             timeout=7200,
+            env={"AWESOME_TOPIC": safe_topic},
         )
     else:
         flash("Nieznany krok", "error")

@@ -290,7 +290,7 @@ def download(topic="awesome-list", wide=True, refresh=False, sort="stars",
 
 def main(argv=None):
     args = list(argv if argv is not None else sys.argv[1:])
-    topic = "awesome-list"
+    topic = os.environ.get("AWESOME_TOPIC", "awesome-list")
     wide = "--wide" in args or not args
     refresh = "--refresh" in args
     verbose = "--quiet" not in args
