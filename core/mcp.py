@@ -443,11 +443,12 @@ def main(argv=None):
         demo(data_dir, query)
         return 0
     if not store.db_ready(data_dir):
-        print(f"Brak bazy w {data_dir}. Zbuduj ją: python3 extract_tools.py",
+        print(f"[awesome-mcp] brak bazy w {data_dir}; serwer startuje, "
+              "ale narzędzia katalogu zwrócą błąd do czasu zbudowania bazy "
+              "(python3 extract_tools.py)", file=sys.stderr)
+    else:
+        print(f"[awesome-mcp] gotowy (baza {data_dir}); loguję na stderr",
               file=sys.stderr)
-        return 1
-    print(f"[awesome-mcp] gotowy (baza {data_dir}); loguję na stderr",
-          file=sys.stderr)
     serve(data_dir)
     return 0
 
